@@ -44,6 +44,7 @@ Window:Tag({
     Color = Color3.fromHex("#30ff6a"),
     Radius = 12
 })
+
 -- ============================================================
 -- HELPERS
 -- ============================================================
@@ -62,22 +63,21 @@ end
 -- ============================================================
 local TabPlayer = Window:Tab({ Title = "Player", Icon = "user" })
 
--- State variables
 local flyEnabled = false
 local flySpeed = 10
 local airWalkConn = nil
 local noClipConn = nil
 local infJumpConn = nil
-local noFallConn = nil
-local noGravConn = nil
-local freezeConn = nil
 local invisV1Conn = nil
 local invisV2Conn = nil
 local invisV1Parts = {}
 local invisV2Parts = {}
+local flyToggle
 
--- AIR WALK
-TabPlayer:Toggle({
+-- SECTION: MOVEMENT
+local SectionMovement = TabPlayer:Section({ Title = "Movement", Icon = "footprints", Opened = true })
+
+SectionMovement:Toggle({
     Title = "Air Walk",
     Desc = "Berjalan di udara",
     Icon = "footprints",
@@ -96,9 +96,7 @@ TabPlayer:Toggle({
     end
 })
 
--- FLY
-local flyToggle
-flyToggle = TabPlayer:Toggle({
+flyToggle = SectionMovement:Toggle({
     Title = "Fly",
     Desc = "Terbang mengikuti arah kamera",
     Icon = "plane",
@@ -183,24 +181,146 @@ flyToggle = TabPlayer:Toggle({
     end
 })
 
--- FREEZE
-TabPlayer:Toggle({
+SectionMovement:Toggle({
+    Title = "Infinite Jump",
+    Desc = "Lompat tanpa batas",
+    Icon = "chevrons-up",
+    Value = false,
+    Callback = function(state)
+        if state then
+            infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
+                local hum = getHum()
+                if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+            end)
+        else
+            if infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
+        end
+    end
+})
+
+SectionMovement:Toggle({
+    Title = "No Clip",
+    Desc = "Tembus dinding",
+    Icon = "layers",
+    Value = false,
+    Callback = function(state)
+        if state then
+            noClipConn = RunService.Stepped:Connect(function()
+                local chr = getChar()
+                if chr then
+                    for _, p in pairs(chr:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                end
+            end)
+        else
+            if noClipConn then noClipConn:Disconnect() noClipConn = nil end
+            local chr = getChar()
+            if chr then
+                for _, p in pairs(chr:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = true end
+                end
+            end
+        end
+    end
+})
+
+SectionMovement:Divider()
+
+local jumpPowerEnabled = false
+local jumpPowerValue = 50
+
+SectionMovement:Toggle({
+    Title = "Jump Power",
+    Desc = "Aktifkan custom jump power",
+    Icon = "arrow-up",
+    Value = false,
+    Callback = function(state)
+        jumpPowerEnabled = state
+        local hum = getHum()
+        if hum then hum.JumpPower = state and jumpPowerValue or 50 end
+    end
+})
+
+SectionMovement:Slider({
+    Title = "Jump Power",
+    Desc = "Nilai jump power | Default: 50",
+    Icon = "arrow-up-circle",
+    Step = 1,
+    Value = { Min = 1, Max = 500, Default = 50 },
+    IsTooltip = true,
+    IsTextbox = true,
+    Callback = function(v)
+        jumpPowerValue = v
+        if jumpPowerEnabled then
+            local hum = getHum()
+            if hum then hum.JumpPower = v end
+        end
+    end
+})
+
+SectionMovement:Divider()
+
+local walkSpeedEnabled = false
+local walkSpeedValue = 16
+
+SectionMovement:Toggle({
+    Title = "Walk Speed",
+    Desc = "Aktifkan custom walk speed",
+    Icon = "gauge",
+    Value = false,
+    Callback = function(state)
+        walkSpeedEnabled = state
+        local hum = getHum()
+        if hum then hum.WalkSpeed = state and walkSpeedValue or 16 end
+    end
+})
+
+SectionMovement:Slider({
+    Title = "Walk Speed",
+    Desc = "Kecepatan berjalan | Default: 16",
+    Icon = "gauge",
+    Step = 1,
+    Value = { Min = 1, Max = 500, Default = 16 },
+    IsTooltip = true,
+    IsTextbox = true,
+    Callback = function(v)
+        walkSpeedValue = v
+        if walkSpeedEnabled then
+            local hum = getHum()
+            if hum then hum.WalkSpeed = v end
+        end
+    end
+})
+
+SectionMovement:Slider({
+    Title = "Fly Speed",
+    Desc = "Kecepatan terbang | Default: 10",
+    Icon = "wind",
+    Step = 1,
+    Value = { Min = 1, Max = 200, Default = 10 },
+    IsTooltip = true,
+    IsTextbox = true,
+    Callback = function(v)
+        flySpeed = v
+    end
+})
+
+-- SECTION: PLAYER
+local SectionPlayer2 = TabPlayer:Section({ Title = "Player", Icon = "shield", Opened = true })
+
+SectionPlayer2:Toggle({
     Title = "Freeze",
     Desc = "Bekukan karakter di tempat",
     Icon = "snowflake",
     Value = false,
     Callback = function(state)
         local hrp = getHRP()
-        if state then
-            if hrp then hrp.Anchored = true end
-        else
-            if hrp then hrp.Anchored = false end
-        end
+        if hrp then hrp.Anchored = state end
     end
 })
 
--- GODMODE
-TabPlayer:Toggle({
+SectionPlayer2:Toggle({
     Title = "Godmode",
     Desc = "Karakter tidak bisa mati",
     Icon = "shield",
@@ -219,26 +339,46 @@ TabPlayer:Toggle({
     end
 })
 
--- INFINITE JUMP
-TabPlayer:Toggle({
-    Title = "Infinite Jump",
-    Desc = "Lompat tanpa batas",
-    Icon = "chevrons-up",
+SectionPlayer2:Toggle({
+    Title = "No Fall Damage",
+    Desc = "Tidak ada damage jatuh",
+    Icon = "shield-check",
     Value = false,
     Callback = function(state)
-        if state then
-            infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
-                local hum = getHum()
-                if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-            end)
-        else
-            if infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
+        local hum = getHum()
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, not state)
         end
     end
 })
 
--- INVISIBLE V1
-TabPlayer:Toggle({
+SectionPlayer2:Toggle({
+    Title = "No Gravity",
+    Desc = "Karakter mengambang",
+    Icon = "orbit",
+    Value = false,
+    Callback = function(state)
+        local hrp = getHRP()
+        if state then
+            if hrp then
+                local bg = Instance.new("BodyForce", hrp)
+                bg.Name = "NoGravityForce"
+                bg.Force = Vector3.new(0, workspace.Gravity * (hrp:GetMass()), 0)
+            end
+        else
+            local hrp2 = getHRP()
+            if hrp2 then
+                local f = hrp2:FindFirstChild("NoGravityForce")
+                if f then f:Destroy() end
+            end
+        end
+    end
+})
+
+-- SECTION: INVISIBLE
+local SectionInvis = TabPlayer:Section({ Title = "Invisible", Icon = "eye-off", Opened = true })
+
+SectionInvis:Toggle({
     Title = "Invisible V1",
     Desc = "Teleport bawah tanah setiap frame",
     Icon = "eye-off",
@@ -277,8 +417,7 @@ TabPlayer:Toggle({
     end
 })
 
--- INVISIBLE V2
-TabPlayer:Toggle({
+SectionInvis:Toggle({
     Title = "Invisible V2",
     Desc = "Teleport ke langit setiap frame",
     Icon = "eye-off",
@@ -314,160 +453,6 @@ TabPlayer:Toggle({
             end
             invisV2Parts = {}
         end
-    end
-})
-
--- NO CLIP
-TabPlayer:Toggle({
-    Title = "No Clip",
-    Desc = "Tembus dinding",
-    Icon = "layers",
-    Value = false,
-    Callback = function(state)
-        if state then
-            noClipConn = RunService.Stepped:Connect(function()
-                local chr = getChar()
-                if chr then
-                    for _, p in pairs(chr:GetDescendants()) do
-                        if p:IsA("BasePart") then p.CanCollide = false end
-                    end
-                end
-            end)
-        else
-            if noClipConn then noClipConn:Disconnect() noClipConn = nil end
-            local chr = getChar()
-            if chr then
-                for _, p in pairs(chr:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = true end
-                end
-            end
-        end
-    end
-})
-
--- NO FALL DAMAGE
-TabPlayer:Toggle({
-    Title = "No Fall Damage",
-    Desc = "Tidak ada damage jatuh",
-    Icon = "shield-check",
-    Value = false,
-    Callback = function(state)
-        local hum = getHum()
-        if hum then
-            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, not state)
-        end
-    end
-})
-
--- NO GRAVITY
-TabPlayer:Toggle({
-    Title = "No Gravity",
-    Desc = "Karakter mengambang",
-    Icon = "orbit",
-    Value = false,
-    Callback = function(state)
-        local hrp = getHRP()
-        if state then
-            if hrp then
-                local bg = Instance.new("BodyForce", hrp)
-                bg.Name = "NoGravityForce"
-                bg.Force = Vector3.new(0, workspace.Gravity * (hrp:GetMass()), 0)
-            end
-        else
-            local hrp2 = getHRP()
-            if hrp2 then
-                local f = hrp2:FindFirstChild("NoGravityForce")
-                if f then f:Destroy() end
-            end
-        end
-    end
-})
-
-TabPlayer:Divider()
-
--- JUMP POWER toggle + slider
-local jumpPowerEnabled = false
-local jumpPowerValue = 50
-
-TabPlayer:Toggle({
-    Title = "Jump Power",
-    Desc = "Aktifkan custom jump power",
-    Icon = "arrow-up",
-    Value = false,
-    Callback = function(state)
-        jumpPowerEnabled = state
-        local hum = getHum()
-        if hum then
-            hum.JumpPower = state and jumpPowerValue or 50
-        end
-    end
-})
-
-TabPlayer:Slider({
-    Title = "Jump Power",
-    Desc = "Nilai jump power | Default: 50",
-    Icon = "arrow-up-circle",
-    Step = 1,
-    Value = { Min = 1, Max = 500, Default = 50 },
-    IsTooltip = true,
-    IsTextbox = true,
-    Callback = function(v)
-        jumpPowerValue = v
-        if jumpPowerEnabled then
-            local hum = getHum()
-            if hum then hum.JumpPower = v end
-        end
-    end
-})
-
-TabPlayer:Divider()
-
--- WALK SPEED toggle + slider
-local walkSpeedEnabled = false
-local walkSpeedValue = 16
-
-TabPlayer:Toggle({
-    Title = "Walk Speed",
-    Desc = "Aktifkan custom walk speed",
-    Icon = "gauge",
-    Value = false,
-    Callback = function(state)
-        walkSpeedEnabled = state
-        local hum = getHum()
-        if hum then
-            hum.WalkSpeed = state and walkSpeedValue or 16
-        end
-    end
-})
-
-TabPlayer:Slider({
-    Title = "Walk Speed",
-    Desc = "Kecepatan berjalan | Default: 16",
-    Icon = "gauge",
-    Step = 1,
-    Value = { Min = 1, Max = 500, Default = 16 },
-    IsTooltip = true,
-    IsTextbox = true,
-    Callback = function(v)
-        walkSpeedValue = v
-        if walkSpeedEnabled then
-            local hum = getHum()
-            if hum then hum.WalkSpeed = v end
-        end
-    end
-})
-
--- FLY SPEED slider
-TabPlayer:Slider({
-    Title = "Fly Speed",
-    Desc = "Kecepatan terbang | Default: 10",
-    Icon = "wind",
-    Step = 1,
-    Value = { Min = 1, Max = 200, Default = 10 },
-    IsTooltip = true,
-    IsTextbox = true,
-    Callback = function(v)
-        flySpeed = v
     end
 })
 
@@ -626,9 +611,9 @@ local function scaleCharacter(newScale)
     return true
 end
 
-TabSize:Section({ Title = "Enlarge Size" })
+local SectionEnlarge = TabSize:Section({ Title = "Enlarge Size", Icon = "maximize-2", Opened = true })
 
-local enlargeSlider = TabSize:Slider({
+local enlargeSlider = SectionEnlarge:Slider({
     Title = "Perbesar Karakter",
     Desc = "Ukuran 1x - 30x | Default: 1",
     Icon = "maximize-2",
@@ -641,7 +626,7 @@ local enlargeSlider = TabSize:Slider({
     end
 })
 
-TabSize:Button({
+SectionEnlarge:Button({
     Title = "Apply Perbesar",
     Desc = "Terapkan ukuran besar",
     Icon = "check",
@@ -655,11 +640,9 @@ TabSize:Button({
     end
 })
 
-TabSize:Divider()
+local SectionReduce = TabSize:Section({ Title = "Reduce Size", Icon = "minimize-2", Opened = true })
 
-TabSize:Section({ Title = "Reduce Size" })
-
-local reduceSlider = TabSize:Slider({
+local reduceSlider = SectionReduce:Slider({
     Title = "Perkecil Karakter",
     Desc = "Ukuran 0.1x - 1x | Default: 1",
     Icon = "minimize-2",
@@ -672,7 +655,7 @@ local reduceSlider = TabSize:Slider({
     end
 })
 
-TabSize:Button({
+SectionReduce:Button({
     Title = "Apply Perkecil",
     Desc = "Terapkan ukuran kecil",
     Icon = "check",
@@ -686,9 +669,9 @@ TabSize:Button({
     end
 })
 
-TabSize:Divider()
+local SectionReset = TabSize:Section({ Title = "Reset", Icon = "refresh-cw", Opened = true })
 
-TabSize:Button({
+SectionReset:Button({
     Title = "Reset ke Normal",
     Desc = "Kembalikan ukuran ke 1x",
     Icon = "refresh-cw",
@@ -799,9 +782,6 @@ local EmoteList = {
     { Title = "Flex Walk",        Id = 15505459811 },
 }
 
--- ============================================================
--- CUSTOM EMOTES - SAVE/LOAD FILE
--- ============================================================
 local customEmotes = {}
 local customEmotesFile = "WindUI/PieHub/customEmotes.json"
 
@@ -822,35 +802,24 @@ local function loadCustomEmotes()
     pcall(function()
         if readfile and isfile and isfile(customEmotesFile) then
             local data = HttpService:JSONDecode(readfile(customEmotesFile))
-            if type(data) == "table" then
-                customEmotes = data
-            end
+            if type(data) == "table" then customEmotes = data end
         end
     end)
 end
 
 loadCustomEmotes()
 
--- ============================================================
--- HELPERS
--- ============================================================
 local function buildEmoteNameList()
     local names = {}
-    for _, v in ipairs(EmoteList) do
-        table.insert(names, v.Title)
-    end
-    for name in pairs(customEmotes) do
-        table.insert(names, name .. " (custom)")
-    end
+    for _, v in ipairs(EmoteList) do table.insert(names, v.Title) end
+    for name in pairs(customEmotes) do table.insert(names, name .. " (custom)") end
     table.sort(names, function(a, b) return a:lower() < b:lower() end)
     return names
 end
 
 local function buildCustomEmoteNames()
     local names = {}
-    for name in pairs(customEmotes) do
-        table.insert(names, name)
-    end
+    for name in pairs(customEmotes) do table.insert(names, name) end
     table.sort(names, function(a, b) return a:lower() < b:lower() end)
     return names
 end
@@ -860,15 +829,12 @@ for _, v in ipairs(AnimationList) do table.insert(animNameList, v.Title) end
 table.sort(animNameList, function(a, b) return a:lower() < b:lower() end)
 
 local URL_ANIM = "http://www.roblox.com/asset/?id="
-
-local selectedAnimation    = nil
-local selectedEmote        = nil
-local selectedCustomEmote  = nil
-local currentEmoteTrack    = nil
+local selectedAnimation   = nil
+local selectedEmote       = nil
+local selectedCustomEmote = nil
+local currentEmoteTrack   = nil
 local customEmoteNameValue = ""
 local customEmoteIdValue   = ""
-
--- Default anim IDs disimpan sebelum pertama kali diubah
 local defaultAnimIds = {}
 
 local function getAnimData(title)
@@ -891,8 +857,7 @@ local function saveDefaultAnims()
     local chr = getChar()
     if not chr then return end
     local Animate = chr:FindFirstChild("Animate")
-    if not Animate or next(defaultAnimIds) ~= nil then return end -- sudah disimpan
-
+    if not Animate or next(defaultAnimIds) ~= nil then return end
     if Animate:FindFirstChild("idle") then
         defaultAnimIds.Idle  = Animate.idle.Animation1.AnimationId
         defaultAnimIds.Idle2 = Animate.idle.Animation2.AnimationId
@@ -924,9 +889,7 @@ local function applyAnimation(data)
     if not chr then return end
     local Animate = chr:FindFirstChild("Animate")
     if not Animate then return end
-
-    saveDefaultAnims() -- simpan default sebelum pertama kali diubah
-
+    saveDefaultAnims()
     if Animate:FindFirstChild("idle") then
         Animate.idle.Animation1.AnimationId = URL_ANIM .. data.Idle
         Animate.idle.Animation2.AnimationId = URL_ANIM .. data.Idle2
@@ -946,7 +909,6 @@ local function applyAnimation(data)
     if Animate:FindFirstChild("fall") then
         Animate.fall:FindFirstChildOfClass("Animation").AnimationId = URL_ANIM .. data.Fall
     end
-
     Animate.Disabled = true
     local hum = getHum()
     if hum then
@@ -964,8 +926,6 @@ local function resetAnimation()
     if not chr then return end
     local Animate = chr:FindFirstChild("Animate")
     if not Animate then return end
-
-    -- Kembalikan AnimationId ke default sebelum toggle Disabled
     if next(defaultAnimIds) ~= nil then
         if Animate:FindFirstChild("idle") then
             if defaultAnimIds.Idle  then Animate.idle.Animation1.AnimationId = defaultAnimIds.Idle  end
@@ -992,11 +952,9 @@ local function resetAnimation()
             if a and defaultAnimIds.Fall then a.AnimationId = defaultAnimIds.Fall end
         end
     end
-
     Animate.Disabled = true
     task.wait(0.1)
     Animate.Disabled = false
-
     local hum = getHum()
     if hum then
         for _, t in ipairs(hum:GetPlayingAnimationTracks()) do t:Stop() end
@@ -1005,8 +963,7 @@ local function resetAnimation()
         task.wait()
         hum.WalkSpeed = s
     end
-
-    defaultAnimIds = {} -- clear supaya bisa disimpan ulang jika karakter respawn
+    defaultAnimIds = {}
 end
 
 local function playEmote(data)
@@ -1053,9 +1010,6 @@ local function stopEmote()
     end
 end
 
--- ============================================================
--- SECTION: ANIMATIONS
--- ============================================================
 local SectionAnim = TabAnimations:Section({ Title = "Animations", Icon = "person-standing", Opened = true })
 
 SectionAnim:Dropdown({
@@ -1064,9 +1018,7 @@ SectionAnim:Dropdown({
     Values = animNameList,
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedAnimation = v
-    end
+    Callback = function(v) selectedAnimation = v end
 })
 
 SectionAnim:Button({
@@ -1099,9 +1051,6 @@ SectionAnim:Button({
     end
 })
 
--- ============================================================
--- SECTION: EMOTE
--- ============================================================
 local SectionEmote = TabAnimations:Section({ Title = "Emote", Icon = "drama", Opened = true })
 
 local emoteDropdown = SectionEmote:Dropdown({
@@ -1110,9 +1059,7 @@ local emoteDropdown = SectionEmote:Dropdown({
     Values = buildEmoteNameList(),
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedEmote = v
-    end
+    Callback = function(v) selectedEmote = v end
 })
 
 SectionEmote:Button({
@@ -1154,19 +1101,14 @@ SectionEmote:Button({
     end
 })
 
--- ============================================================
--- SECTION: MORE (Custom Emote)
--- ============================================================
-local SectionMoreAnim = TabAnimations:Section({ Title = "More", Icon = "plus-circle", Opened = true })
+local SectionMoreAnim = TabAnimations:Section({ Title = "Custom Emote", Icon = "plus-circle", Opened = true })
 
 SectionMoreAnim:Input({
     Title = "Nama",
     Desc = "Nama untuk emote custom",
     Placeholder = "Contoh: My Emote",
     Value = "",
-    Callback = function(v)
-        customEmoteNameValue = v
-    end
+    Callback = function(v) customEmoteNameValue = v end
 })
 
 SectionMoreAnim:Input({
@@ -1174,9 +1116,7 @@ SectionMoreAnim:Input({
     Desc = "Asset ID emote Roblox",
     Placeholder = "Contoh: 507770818",
     Value = "",
-    Callback = function(v)
-        customEmoteIdValue = v
-    end
+    Callback = function(v) customEmoteIdValue = v end
 })
 
 local customEmoteDropdown
@@ -1199,7 +1139,7 @@ SectionMoreAnim:Button({
         saveCustomEmotes()
         customEmoteDropdown:Refresh(buildCustomEmoteNames())
         emoteDropdown:Refresh(buildEmoteNameList())
-        WindUI:Notify({ Title = "More", Content = "Emote '" .. customEmoteNameValue .. "' disimpan!", Duration = 2, Icon = "save" })
+        WindUI:Notify({ Title = "Custom Emote", Content = "Emote '" .. customEmoteNameValue .. "' disimpan!", Duration = 2, Icon = "save" })
     end
 })
 
@@ -1210,19 +1150,17 @@ SectionMoreAnim:Button({
     Callback = function()
         customEmoteDropdown:Refresh(buildCustomEmoteNames())
         emoteDropdown:Refresh(buildEmoteNameList())
-        WindUI:Notify({ Title = "More", Content = "Daftar diperbarui.", Duration = 2, Icon = "refresh-cw" })
+        WindUI:Notify({ Title = "Custom Emote", Content = "Daftar diperbarui.", Duration = 2, Icon = "refresh-cw" })
     end
 })
 
 customEmoteDropdown = SectionMoreAnim:Dropdown({
-    Title = "Nama",
-    Desc = "Daftar emote custom tersimpan",
+    Title = "Daftar Custom Emote",
+    Desc = "Emote custom tersimpan",
     Values = buildCustomEmoteNames(),
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedCustomEmote = v
-    end
+    Callback = function(v) selectedCustomEmote = v end
 })
 
 SectionMoreAnim:Button({
@@ -1239,7 +1177,7 @@ SectionMoreAnim:Button({
         saveCustomEmotes()
         customEmoteDropdown:Refresh(buildCustomEmoteNames())
         emoteDropdown:Refresh(buildEmoteNameList())
-        WindUI:Notify({ Title = "More", Content = "Emote dihapus.", Duration = 2, Icon = "trash" })
+        WindUI:Notify({ Title = "Custom Emote", Content = "Emote dihapus.", Duration = 2, Icon = "trash" })
     end
 })
 
@@ -1248,52 +1186,24 @@ SectionMoreAnim:Button({
 -- ============================================================
 local TabAvatars = Window:Tab({ Title = "Avatars", Icon = "shirt" })
 
--- ============================================================
--- HELPERS AVATAR
--- ============================================================
-local AvatarEditorService = game:GetService("AvatarEditorService")
-local ContentProvider = game:GetService("ContentProvider")
-
-local defaultBodyColors = nil
-local defaultBodyParts  = nil
-local defaultAccessories = nil
-
-local function saveDefaultAvatar()
-    if defaultBodyParts then return end
-    local chr = getChar()
-    if not chr then return end
-    local hum = getHum()
-    if not hum then return end
-
-    defaultBodyParts = {}
-    for _, p in ipairs(chr:GetChildren()) do
-        if p:IsA("BodyColors") then
-            defaultBodyColors = p:Clone()
-        end
-    end
-    defaultAccessories = {}
-    for _, a in ipairs(chr:GetChildren()) do
-        if a:IsA("Accessory") then
-            table.insert(defaultAccessories, a:Clone())
-        end
-    end
-end
-
 local function applyAvatarFromUserId(userId)
-    local success, desc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(userId)
-    end)
-    if not success or not desc then
-        WindUI:Notify({ Title = "Error", Content = "Gagal mengambil avatar! ID mungkin tidak valid.", Duration = 3, Icon = "alert-circle" })
-        return false
-    end
     local hum = getHum()
     if not hum then
         WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
         return false
     end
-    saveDefaultAvatar()
-    pcall(function() hum:ApplyDescriptionReset(desc) end)
+    local success, desc = pcall(function()
+        return Players:GetHumanoidDescriptionFromUserId(userId)
+    end)
+    if not success or not desc then
+        WindUI:Notify({ Title = "Error", Content = "Gagal ambil avatar! ID tidak valid.", Duration = 3, Icon = "alert-circle" })
+        return false
+    end
+    local ok = pcall(function() hum:ApplyDescription(desc) end)
+    if not ok then
+        WindUI:Notify({ Title = "Error", Content = "Gagal apply avatar.", Duration = 3, Icon = "alert-circle" })
+        return false
+    end
     WindUI:Notify({ Title = "Avatars", Content = "Avatar diterapkan!", Duration = 2, Icon = "check" })
     return true
 end
@@ -1305,18 +1215,157 @@ local function resetAvatar()
         return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
     end)
     if success and desc then
-        pcall(function() hum:ApplyDescriptionReset(desc) end)
-        WindUI:Notify({ Title = "Avatars", Content = "Avatar dikembalikan ke default.", Duration = 2, Icon = "refresh-cw" })
+        pcall(function() hum:ApplyDescription(desc) end)
+        WindUI:Notify({ Title = "Avatars", Content = "Avatar direset.", Duration = 2, Icon = "refresh-cw" })
     else
         WindUI:Notify({ Title = "Error", Content = "Gagal reset avatar.", Duration = 2, Icon = "alert-circle" })
     end
 end
 
--- ============================================================
--- SECTION: USERNAME
--- ============================================================
-local SectionAvatarUsername = TabAvatars:Section({ Title = "Username", Icon = "user", Opened = true })
+local function applyItemById(assetId)
+    local hum = getHum()
+    if not hum then
+        WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+        return
+    end
+    local success, desc = pcall(function() return hum:GetAppliedDescription() end)
+    if not success or not desc then
+        success, desc = pcall(function()
+            return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
+        end)
+    end
+    if not success or not desc then
+        WindUI:Notify({ Title = "Error", Content = "Gagal ambil description.", Duration = 2, Icon = "alert-circle" })
+        return
+    end
+    local ok = pcall(function()
+        local blob = desc.AccessoryBlob
+        local parsed = HttpService:JSONDecode(blob ~= "" and blob or "[]")
+        table.insert(parsed, { AssetId = assetId, AccessoryType = 0 })
+        desc.AccessoryBlob = HttpService:JSONEncode(parsed)
+        hum:ApplyDescription(desc)
+    end)
+    if ok then
+        WindUI:Notify({ Title = "Avatars", Content = "Item dipasang!", Duration = 2, Icon = "check" })
+    else
+        WindUI:Notify({ Title = "Error", Content = "Gagal pasang item.", Duration = 3, Icon = "alert-circle" })
+    end
+end
 
+local function applyBundleItems(items)
+    local hum = getHum()
+    if not hum then
+        WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+        return
+    end
+    local success, desc = pcall(function() return hum:GetAppliedDescription() end)
+    if not success or not desc then
+        success, desc = pcall(function()
+            return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
+        end)
+    end
+    if not success or not desc then
+        WindUI:Notify({ Title = "Error", Content = "Gagal ambil description.", Duration = 2, Icon = "alert-circle" })
+        return
+    end
+    local ok = pcall(function()
+        local blob = desc.AccessoryBlob
+        local parsed = HttpService:JSONDecode(blob ~= "" and blob or "[]")
+        for _, item in ipairs(items) do
+            table.insert(parsed, { AssetId = item.Id, AccessoryType = 0 })
+        end
+        desc.AccessoryBlob = HttpService:JSONEncode(parsed)
+        hum:ApplyDescription(desc)
+    end)
+    if ok then
+        WindUI:Notify({ Title = "Avatars", Content = "Bundle dipasang!", Duration = 2, Icon = "check" })
+    else
+        WindUI:Notify({ Title = "Error", Content = "Gagal pasang bundle.", Duration = 3, Icon = "alert-circle" })
+    end
+end
+
+local PresetItems = {
+    {
+        Title = "[Bundle] Korblox Deathspeaker",
+        IsBundle = true,
+        Items = {
+            { Name = "Korblox Lengan Kiri",  Id = 139607570 },
+            { Name = "Korblox Tangan Kanan", Id = 139607625 },
+            { Name = "Korblox Kaki Kiri",    Id = 139607673 },
+            { Name = "Korblox Kaki Kanan",   Id = 139607718 },
+            { Name = "Korblox Torso",        Id = 139607770 },
+            { Name = "Korblox Hood",         Id = 139610147 },
+        }
+    },
+    { Title = "Korblox Lengan Kiri",                   IsBundle = false, Id = 139607570  },
+    { Title = "Korblox Tangan Kanan",                  IsBundle = false, Id = 139607625  },
+    { Title = "Korblox Kaki Kiri",                     IsBundle = false, Id = 139607673  },
+    { Title = "Korblox Kaki Kanan",                    IsBundle = false, Id = 139607718  },
+    { Title = "Korblox Torso",                         IsBundle = false, Id = 139607770  },
+    { Title = "Korblox Hood",                          IsBundle = false, Id = 139610147  },
+    { Title = "Kepala Tanpa Kepala",                   IsBundle = false, Id = 15093053680 },
+    { Title = "8-Bit HP Bar",                          IsBundle = false, Id = 10159610478 },
+    { Title = "Mahkota Royal 8-Bit",                   IsBundle = false, Id = 10159600649 },
+    { Title = "8-Bit Extra Life",                      IsBundle = false, Id = 10159606132 },
+    { Title = "8-Bit Roblox Coin",                     IsBundle = false, Id = 10159622004 },
+    { Title = "Ghosdeeri",                             IsBundle = false, Id = 183468963   },
+    { Title = "Poisoned Horns of the Toxic Wasteland", IsBundle = false, Id = 1744060292  },
+    { Title = "Fiery Horns of the Netherworld",        IsBundle = false, Id = 215718515   },
+    { Title = "Winter Fairy",                          IsBundle = false, Id = 141742418   },
+    { Title = "St. Patrick's Day Fairy",               IsBundle = false, Id = 226189871   },
+    { Title = "Fall Fairy",                            IsBundle = false, Id = 128217885   },
+    { Title = "Spring Fairy",                          IsBundle = false, Id = 150381051   },
+    { Title = "Crescendo The Soul Stealer",            IsBundle = false, Id = 94794774    },
+    { Title = "Azure Dragon's Magic Slayer",           IsBundle = false, Id = 268586231   },
+}
+
+local customItems = {}
+local customItemsFile = "WindUI/PieHub/customItems.json"
+
+local function saveCustomItems()
+    pcall(function()
+        if writefile then writefile(customItemsFile, HttpService:JSONEncode(customItems)) end
+    end)
+end
+
+local function loadCustomItems()
+    pcall(function()
+        if readfile and isfile and isfile(customItemsFile) then
+            local data = HttpService:JSONDecode(readfile(customItemsFile))
+            if type(data) == "table" then customItems = data end
+        end
+    end)
+end
+
+loadCustomItems()
+
+local function buildPresetItemNames()
+    local names = {}
+    for _, v in ipairs(PresetItems) do table.insert(names, v.Title) end
+    for name in pairs(customItems) do table.insert(names, name .. " (custom)") end
+    table.sort(names, function(a, b) return a:lower() < b:lower() end)
+    return names
+end
+
+local function buildCustomItemNames()
+    local names = {}
+    for name in pairs(customItems) do table.insert(names, name) end
+    table.sort(names, function(a, b) return a:lower() < b:lower() end)
+    return names
+end
+
+local function getPresetItemData(title)
+    for _, v in ipairs(PresetItems) do
+        if v.Title == title then return v end
+    end
+    local plainName = title:gsub(" %(custom%)$", "")
+    if customItems[plainName] then
+        return { Title = plainName, IsBundle = false, Id = customItems[plainName] }
+    end
+end
+
+-- SECTION: USERNAME
+local SectionAvatarUsername = TabAvatars:Section({ Title = "Username", Icon = "user", Opened = true })
 local avatarUsernameValue = ""
 
 SectionAvatarUsername:Input({
@@ -1324,9 +1373,7 @@ SectionAvatarUsername:Input({
     Desc = "Masukkan username Roblox",
     Placeholder = "Contoh: Roblox",
     Value = "",
-    Callback = function(v)
-        avatarUsernameValue = v
-    end
+    Callback = function(v) avatarUsernameValue = v end
 })
 
 SectionAvatarUsername:Button({
@@ -1353,16 +1400,11 @@ SectionAvatarUsername:Button({
     Title = "Reset",
     Desc = "Kembalikan avatar ke default",
     Icon = "refresh-cw",
-    Callback = function()
-        resetAvatar()
-    end
+    Callback = function() resetAvatar() end
 })
 
--- ============================================================
 -- SECTION: USER ID
--- ============================================================
 local SectionAvatarUserId = TabAvatars:Section({ Title = "User ID", Icon = "hash", Opened = true })
-
 local avatarUserIdValue = ""
 
 SectionAvatarUserId:Input({
@@ -1370,9 +1412,7 @@ SectionAvatarUserId:Input({
     Desc = "Masukkan User ID Roblox",
     Placeholder = "Contoh: 1",
     Value = "",
-    Callback = function(v)
-        avatarUserIdValue = v
-    end
+    Callback = function(v) avatarUserIdValue = v end
 })
 
 SectionAvatarUserId:Button({
@@ -1393,16 +1433,11 @@ SectionAvatarUserId:Button({
     Title = "Reset",
     Desc = "Kembalikan avatar ke default",
     Icon = "refresh-cw",
-    Callback = function()
-        resetAvatar()
-    end
+    Callback = function() resetAvatar() end
 })
 
--- ============================================================
 -- SECTION: PLAYER IN MAP
--- ============================================================
 local SectionAvatarPlayer = TabAvatars:Section({ Title = "Player In Map", Icon = "users", Opened = true })
-
 local selectedAvatarPlayer = nil
 local avatarPlayerList = {}
 
@@ -1423,9 +1458,7 @@ local avatarPlayerDropdown = SectionAvatarPlayer:Dropdown({
     Desc = "Pilih player untuk ambil avatarnya",
     Values = getAvatarPlayerNames(),
     Value = "",
-    Callback = function(v)
-        selectedAvatarPlayer = v
-    end
+    Callback = function(v) selectedAvatarPlayer = v end
 })
 
 SectionAvatarPlayer:Button({
@@ -1460,237 +1493,32 @@ SectionAvatarPlayer:Button({
     Title = "Reset",
     Desc = "Kembalikan avatar ke default",
     Icon = "refresh-cw",
-    Callback = function()
-        resetAvatar()
-    end
+    Callback = function() resetAvatar() end
 })
 
--- ============================================================
--- ITEM LIST (Bundle & Individual)
--- ============================================================
-local PresetItems = {
-    -- BUNDLES
-    {
-        Title = "[Bundle] Korblox Deathspeaker",
-        IsBundle = true,
-        Items = {
-            { Name = "Korblox Lengan Kiri",   Id = 139607570 },
-            { Name = "Korblox Tangan Kanan",  Id = 139607625 },
-            { Name = "Korblox Kaki Kiri",     Id = 139607673 },
-            { Name = "Korblox Kaki Kanan",    Id = 139607718 },
-            { Name = "Korblox Torso",         Id = 139607770 },
-            { Name = "Korblox Hood",          Id = 139610147 },
-        }
-    },
-
-    -- PER ITEM
-    { Title = "Korblox Lengan Kiri",                  IsBundle = false, Id = 139607570  },
-    { Title = "Korblox Tangan Kanan",                 IsBundle = false, Id = 139607625  },
-    { Title = "Korblox Kaki Kiri",                    IsBundle = false, Id = 139607673  },
-    { Title = "Korblox Kaki Kanan",                   IsBundle = false, Id = 139607718  },
-    { Title = "Korblox Torso",                        IsBundle = false, Id = 139607770  },
-    { Title = "Korblox Hood",                         IsBundle = false, Id = 139610147  },
-    { Title = "Kepala Tanpa Kepala",                  IsBundle = false, Id = 15093053680 },
-    { Title = "8-Bit HP Bar",                         IsBundle = false, Id = 10159610478 },
-    { Title = "Mahkota Royal 8-Bit",                  IsBundle = false, Id = 10159600649 },
-    { Title = "8-Bit Extra Life",                     IsBundle = false, Id = 10159606132 },
-    { Title = "8-Bit Roblox Coin",                    IsBundle = false, Id = 10159622004 },
-    { Title = "Ghosdeeri",                            IsBundle = false, Id = 183468963   },
-    { Title = "Poisoned Horns of the Toxic Wasteland",IsBundle = false, Id = 1744060292  },
-    { Title = "Fiery Horns of the Netherworld",       IsBundle = false, Id = 215718515   },
-    { Title = "Winter Fairy",                         IsBundle = false, Id = 141742418   },
-    { Title = "St. Patrick's Day Fairy",              IsBundle = false, Id = 226189871   },
-    { Title = "Fall Fairy",                           IsBundle = false, Id = 128217885   },
-    { Title = "Spring Fairy",                         IsBundle = false, Id = 150381051   },
-    { Title = "Crescendo The Soul Stealer",           IsBundle = false, Id = 94794774    },
-    { Title = "Azure Dragon's Magic Slayer",          IsBundle = false, Id = 268586231   },
-}
-
--- Custom items disimpan ke file
-local customItems = {}
-local customItemsFile = "WindUI/PieHub/customItems.json"
-
-local function saveCustomItems()
-    pcall(function()
-        if writefile then
-            writefile(customItemsFile, HttpService:JSONEncode(customItems))
-        end
-    end)
-end
-
-local function loadCustomItems()
-    pcall(function()
-        if readfile and isfile and isfile(customItemsFile) then
-            local data = HttpService:JSONDecode(readfile(customItemsFile))
-            if type(data) == "table" then customItems = data end
-        end
-    end)
-end
-
-loadCustomItems()
-
--- ============================================================
--- APPLY ITEM / BUNDLE HELPERS
--- ============================================================
-local function wearAccessory(assetId)
-    local hum = getHum()
-    local chr = getChar()
-    if not hum or not chr then return false end
-
-    local success, desc = pcall(function()
-        return hum:GetAppliedDescription()
-    end)
-    if not success or not desc then return false end
-
-    -- Tambahkan ke Accessories field di HumanoidDescription
-    local currentIds = desc.AccessoryBlob
-    -- Pakai pcall karena API bisa bervariasi
-    pcall(function()
-        local newAcc = Instance.new("Accessory")
-        local handle = Instance.new("Part", newAcc)
-        handle.Name = "Handle"
-        newAcc.Name = "CustomItem_" .. assetId
-
-        local mesh = Instance.new("SpecialMesh", handle)
-        mesh.MeshType = Enum.MeshType.FileMesh
-        mesh.MeshId = "rbxassetid://" .. assetId
-
-        newAcc.Parent = chr
-    end)
-
-    -- Cara yang lebih reliable: modifikasi description
-    local ok, newDesc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
-    end)
-    if ok and newDesc then
-        -- Tambahkan asset ke hat fields
-        local function addToField(field)
-            local current = newDesc[field]
-            if current == 0 or current == nil then
-                newDesc[field] = assetId
-                return true
-            end
-            return false
-        end
-        -- Coba masukkan ke slot yang kosong
-        local slots = { "Hat1", "Hat2", "Hat3" }
-        local placed = false
-        for _, slot in ipairs(slots) do
-            pcall(function()
-                if not placed then
-                    if newDesc[slot] == 0 then
-                        newDesc[slot] = assetId
-                        placed = true
-                    end
-                end
-            end)
-        end
-        pcall(function() hum:ApplyDescriptionReset(newDesc) end)
-    end
-    return true
-end
-
-local function applyItemById(assetId)
-    local hum = getHum()
-    if not hum then
-        WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-        return
-    end
-    saveDefaultAvatar()
-
-    -- Ambil description sendiri lalu pasang accessory via InsertService
-    local ok, model = pcall(function()
-        return game:GetService("InsertService"):LoadAsset(assetId)
-    end)
-
-    if ok and model then
-        local acc = model:FindFirstChildWhichIsA("Accessory")
-            or model:FindFirstChildWhichIsA("BodyColors")
-            or model:FindFirstChildOfClass("Hat")
-        if acc then
-            acc.Parent = getChar()
-            model:Destroy()
-            WindUI:Notify({ Title = "Avatars", Content = "Item berhasil dipasang!", Duration = 2, Icon = "check" })
-        else
-            -- Coba pasang semua child langsung
-            for _, child in ipairs(model:GetChildren()) do
-                child.Parent = getChar()
-            end
-            model:Destroy()
-            WindUI:Notify({ Title = "Avatars", Content = "Item diterapkan!", Duration = 2, Icon = "check" })
-        end
-    else
-        WindUI:Notify({ Title = "Error", Content = "Gagal load item. Pastikan asset valid.", Duration = 3, Icon = "alert-circle" })
-    end
-end
-
-local function applyBundleItems(items)
-    for _, item in ipairs(items) do
-        applyItemById(item.Id)
-        task.wait(0.1)
-    end
-end
-
--- ============================================================
--- BUILD DROPDOWN LIST
--- ============================================================
-local function buildPresetItemNames()
-    local names = {}
-    for _, v in ipairs(PresetItems) do
-        table.insert(names, v.Title)
-    end
-    for name in pairs(customItems) do
-        table.insert(names, name .. " (custom)")
-    end
-    table.sort(names, function(a, b) return a:lower() < b:lower() end)
-    return names
-end
-
-local function buildCustomItemNames()
-    local names = {}
-    for name in pairs(customItems) do table.insert(names, name) end
-    table.sort(names, function(a, b) return a:lower() < b:lower() end)
-    return names
-end
-
-local function getPresetItemData(title)
-    for _, v in ipairs(PresetItems) do
-        if v.Title == title then return v end
-    end
-    local plainName = title:gsub(" %(custom%)$", "")
-    if customItems[plainName] then
-        return { Title = plainName, IsBundle = false, Id = customItems[plainName] }
-    end
-end
-
--- ============================================================
--- SECTION: ITEM WITH ASSET ID
--- ============================================================
+-- SECTION: ITEM / ASSET ID
 local SectionAvatarItem = TabAvatars:Section({ Title = "Item / Asset ID", Icon = "package", Opened = true })
-
-local itemNameValue   = ""
+local itemNameValue    = ""
 local itemAssetIdValue = ""
-local selectedItem    = nil
+local selectedItem     = nil
 local selectedCustomItem = nil
+local itemDropdown
+local customItemDropdown
 
 SectionAvatarItem:Input({
     Title = "Nama",
     Desc = "Nama item untuk disimpan",
     Placeholder = "Contoh: My Hat",
     Value = "",
-    Callback = function(v)
-        itemNameValue = v
-    end
+    Callback = function(v) itemNameValue = v end
 })
 
 SectionAvatarItem:Input({
     Title = "Asset ID",
-    Desc = "Asset ID item Roblox",
+    Desc = "Asset ID item Roblox (angka di URL catalog)",
     Placeholder = "Contoh: 139610147",
     Value = "",
-    Callback = function(v)
-        itemAssetIdValue = v
-    end
+    Callback = function(v) itemAssetIdValue = v end
 })
 
 SectionAvatarItem:Button({
@@ -1717,15 +1545,13 @@ SectionAvatarItem:Button({
 
 SectionAvatarItem:Divider()
 
-local itemDropdown = SectionAvatarItem:Dropdown({
+itemDropdown = SectionAvatarItem:Dropdown({
     Title = "Pilih Item / Bundle",
     Desc = "Daftar item & bundle tersedia",
     Values = buildPresetItemNames(),
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedItem = v
-    end
+    Callback = function(v) selectedItem = v end
 })
 
 SectionAvatarItem:Button({
@@ -1743,7 +1569,6 @@ SectionAvatarItem:Button({
             return
         end
         if data.IsBundle then
-            WindUI:Notify({ Title = "Avatars", Content = "Memasang bundle '" .. data.Title .. "'...", Duration = 2, Icon = "package" })
             applyBundleItems(data.Items)
         else
             applyItemById(data.Id)
@@ -1765,22 +1590,18 @@ SectionAvatarItem:Button({
     Title = "Reset",
     Desc = "Kembalikan avatar ke default",
     Icon = "refresh-cw",
-    Callback = function()
-        resetAvatar()
-    end
+    Callback = function() resetAvatar() end
 })
 
 SectionAvatarItem:Divider()
 
-local customItemDropdown = SectionAvatarItem:Dropdown({
+customItemDropdown = SectionAvatarItem:Dropdown({
     Title = "Item Custom Tersimpan",
     Desc = "Daftar item custom kamu",
     Values = buildCustomItemNames(),
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedCustomItem = v
-    end
+    Callback = function(v) selectedCustomItem = v end
 })
 
 SectionAvatarItem:Button({
@@ -1807,9 +1628,9 @@ SectionAvatarItem:Button({
 local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map-pin" })
 
 local selectedPlayer = nil
-local selectedPlace = nil
-local savedPlaces = {}
-local playerList = {}
+local selectedPlace  = nil
+local savedPlaces    = {}
+local playerList     = {}
 
 local function getPlayerNames()
     local names = {}
@@ -1823,31 +1644,28 @@ local function getPlayerNames()
     return names
 end
 
-local SectionPlayer = TabTeleport:Section({ Title = "Player", Icon = "users", Opened = true })
+local SectionTpPlayer = TabTeleport:Section({ Title = "Player", Icon = "users", Opened = true })
 
-local playerDropdown = SectionPlayer:Dropdown({
+local playerDropdown = SectionTpPlayer:Dropdown({
     Title = "Pilih Player",
     Desc = "Pilih player untuk teleport",
     Values = getPlayerNames(),
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedPlayer = v
-    end
+    Callback = function(v) selectedPlayer = v end
 })
 
-SectionPlayer:Button({
+SectionTpPlayer:Button({
     Title = "Refresh",
     Desc = "Refresh daftar player",
     Icon = "refresh-cw",
     Callback = function()
-        local names = getPlayerNames()
-        playerDropdown:Refresh(names)
+        playerDropdown:Refresh(getPlayerNames())
         WindUI:Notify({ Title = "Teleport", Content = "Daftar player diperbarui.", Duration = 2, Icon = "refresh-cw" })
     end
 })
 
-SectionPlayer:Button({
+SectionTpPlayer:Button({
     Title = "Teleport ke Player",
     Desc = "Teleport ke player yang dipilih",
     Icon = "map-pin",
@@ -1870,19 +1688,17 @@ SectionPlayer:Button({
     end
 })
 
-local SectionPlace = TabTeleport:Section({ Title = "Place", Icon = "map", Opened = true })
+local SectionTpPlace = TabTeleport:Section({ Title = "Place", Icon = "map", Opened = true })
 
-local placeDropdown = SectionPlace:Dropdown({
+local placeDropdown = SectionTpPlace:Dropdown({
     Title = "Pilih Place",
     Desc = "Pilih tempat yang sudah disimpan",
     Values = {},
     Value = "",
-    Callback = function(v)
-        selectedPlace = v
-    end
+    Callback = function(v) selectedPlace = v end
 })
 
-local placeNameInput = SectionPlace:Input({
+SectionTpPlace:Input({
     Title = "Nama Tempat",
     Desc = "Masukkan nama tempat",
     Placeholder = "Nama tempat...",
@@ -1890,7 +1706,7 @@ local placeNameInput = SectionPlace:Input({
     Callback = function(v) end
 })
 
-SectionPlace:Button({
+SectionTpPlace:Button({
     Title = "Save Place",
     Desc = "Simpan posisi saat ini",
     Icon = "save",
@@ -1906,7 +1722,7 @@ SectionPlace:Button({
     end
 })
 
-SectionPlace:Button({
+SectionTpPlace:Button({
     Title = "Delete Place",
     Desc = "Hapus tempat yang dipilih",
     Icon = "trash",
@@ -1922,7 +1738,7 @@ SectionPlace:Button({
     end
 })
 
-SectionPlace:Button({
+SectionTpPlace:Button({
     Title = "Refresh",
     Desc = "Refresh daftar tempat",
     Icon = "refresh-cw",
@@ -1934,7 +1750,7 @@ SectionPlace:Button({
     end
 })
 
-SectionPlace:Button({
+SectionTpPlace:Button({
     Title = "Teleport ke Place",
     Desc = "Teleport ke tempat yang dipilih",
     Icon = "map-pin",
@@ -1990,9 +1806,7 @@ end
 local function createESPFor(p)
     if p == LocalPlayer then return end
     removeESPFor(p.Name)
-
     local drawings = {}
-
     local box = {}
     for i = 1, 4 do
         box[i] = newDrawing("Line", {
@@ -2003,59 +1817,37 @@ local function createESPFor(p)
         })
         table.insert(drawings, box[i])
     end
-
     local nameText = newDrawing("Text", {
         Color = Color3.fromRGB(255, 255, 255),
-        Size = 10,
-        Center = true,
-        Outline = true,
+        Size = 10, Center = true, Outline = true,
         OutlineColor = Color3.fromRGB(0, 0, 0),
-        Visible = false,
-        ZIndex = 3,
+        Visible = false, ZIndex = 3,
     })
     table.insert(drawings, nameText)
-
     local distText = newDrawing("Text", {
         Color = Color3.fromRGB(200, 200, 200),
-        Size = 10,
-        Center = true,
-        Outline = true,
+        Size = 10, Center = true, Outline = true,
         OutlineColor = Color3.fromRGB(0, 0, 0),
-        Visible = false,
-        ZIndex = 3,
+        Visible = false, ZIndex = 3,
     })
     table.insert(drawings, distText)
-
     local healthText = newDrawing("Text", {
         Color = Color3.fromRGB(100, 255, 100),
-        Size = 10,
-        Center = true,
-        Outline = true,
+        Size = 10, Center = true, Outline = true,
         OutlineColor = Color3.fromRGB(0, 0, 0),
-        Visible = false,
-        ZIndex = 3,
+        Visible = false, ZIndex = 3,
     })
     table.insert(drawings, healthText)
-
     local tracer = newDrawing("Line", {
         Color = Color3.fromRGB(255, 50, 50),
-        Thickness = 1,
-        Visible = false,
-        ZIndex = 1,
+        Thickness = 1, Visible = false, ZIndex = 1,
     })
     table.insert(drawings, tracer)
-
     espObjects[p.Name] = {
-        drawings  = drawings,
-        box       = box,
-        nameText  = nameText,
-        distText  = distText,
-        healthText = healthText,
-        healthBg  = healthText,
-        healthBar = healthText,
-        tracer    = tracer,
-        highlight = nil,
-        player    = p,
+        drawings = drawings, box = box,
+        nameText = nameText, distText = distText,
+        healthText = healthText, healthBg = healthText, healthBar = healthText,
+        tracer = tracer, highlight = nil, player = p,
     }
 end
 
@@ -2089,34 +1881,26 @@ RunService.RenderStepped:Connect(function()
         end
         return
     end
-
     local vpSize = camera.ViewportSize
-
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
-
         local e = espObjects[p.Name]
         if not e then continue end
-
         local chr = p.Character
         local hrp = chr and chr:FindFirstChild("HumanoidRootPart")
         local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-
         if not hrp or not hum then
             for _, d in pairs(e.drawings) do d.Visible = false end
             continue
         end
-
         local headPos = hrp.Position + Vector3.new(0, 3, 0)
         local feetPos = hrp.Position - Vector3.new(0, 3, 0)
         local headScreen, headVis = camera:WorldToViewportPoint(headPos)
         local feetScreen, feetVis = camera:WorldToViewportPoint(feetPos)
-
         if not headVis or not feetVis then
             for _, d in pairs(e.drawings) do d.Visible = false end
             continue
         end
-
         local h = math.abs(headScreen.Y - feetScreen.Y)
         local w = h * 0.5
         local cx = (headScreen.X + feetScreen.X) / 2
@@ -2125,23 +1909,19 @@ RunService.RenderStepped:Connect(function()
         local left = cx - w / 2
         local right = cx + w / 2
         local mid = (top + bot) / 2
-
         local showBox = espSettings.Box
-        e.box[1].From = Vector2.new(left, top)   e.box[1].To = Vector2.new(right, top)  e.box[1].Visible = showBox
-        e.box[2].From = Vector2.new(left, bot)   e.box[2].To = Vector2.new(right, bot)  e.box[2].Visible = showBox
-        e.box[3].From = Vector2.new(left, top)   e.box[3].To = Vector2.new(left, bot)   e.box[3].Visible = showBox
-        e.box[4].From = Vector2.new(right, top)  e.box[4].To = Vector2.new(right, bot)  e.box[4].Visible = showBox
-
+        e.box[1].From = Vector2.new(left, top)  e.box[1].To = Vector2.new(right, top) e.box[1].Visible = showBox
+        e.box[2].From = Vector2.new(left, bot)  e.box[2].To = Vector2.new(right, bot) e.box[2].Visible = showBox
+        e.box[3].From = Vector2.new(left, top)  e.box[3].To = Vector2.new(left, bot)  e.box[3].Visible = showBox
+        e.box[4].From = Vector2.new(right, top) e.box[4].To = Vector2.new(right, bot) e.box[4].Visible = showBox
         e.nameText.Position = Vector2.new(cx, top - 13)
         e.nameText.Text = p.DisplayName
         e.nameText.Visible = espSettings.Name
-
         local myHRP = getHRP()
         local dist = myHRP and math.floor((hrp.Position - myHRP.Position).Magnitude) or 0
         e.distText.Position = Vector2.new(cx, bot + 2)
         e.distText.Text = dist .. "m"
         e.distText.Visible = espSettings.Distance
-
         local hp = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
         e.healthText.Position = Vector2.new(cx, mid - 5)
         e.healthText.Text = math.floor(hum.Health) .. " HP"
@@ -2149,11 +1929,9 @@ RunService.RenderStepped:Connect(function()
         e.healthText.Visible = espSettings.Health
         e.healthBg.Visible = false
         e.healthBar.Visible = false
-
         e.tracer.From = Vector2.new(vpSize.X / 2, vpSize.Y)
         e.tracer.To   = Vector2.new(cx, bot)
         e.tracer.Visible = espSettings.Tracer
-
         updateESPHighlight(p, espSettings.Highlight)
     end
 end)
@@ -2206,11 +1984,12 @@ SectionESP:Toggle({ Title = "ESP Highlight", Desc = "Highlight karakter player",
         end
     end })
 
-local SectionMore = TabVisuals:Section({ Title = "More", Icon = "settings", Opened = true })
+local SectionVisualMore = TabVisuals:Section({ Title = "World", Icon = "globe", Opened = true })
 
 local freecamEnabled = false
 local freecamSpeed = 20
-SectionMore:Toggle({
+
+SectionVisualMore:Toggle({
     Title = "Freecam",
     Desc = "Kamera bebas terbang",
     Icon = "video",
@@ -2243,7 +2022,7 @@ SectionMore:Toggle({
     end
 })
 
-SectionMore:Toggle({
+SectionVisualMore:Toggle({
     Title = "Fullbright",
     Desc = "Terangi semua area",
     Icon = "sun",
@@ -2266,7 +2045,7 @@ SectionMore:Toggle({
     end
 })
 
-SectionMore:Toggle({
+SectionVisualMore:Toggle({
     Title = "No Fog",
     Desc = "Hilangkan fog",
     Icon = "cloud-off",
@@ -2283,7 +2062,7 @@ SectionMore:Toggle({
     end
 })
 
-SectionMore:Toggle({
+SectionVisualMore:Toggle({
     Title = "No Skybox",
     Desc = "Hilangkan skybox",
     Icon = "image-off",
@@ -2295,7 +2074,7 @@ SectionMore:Toggle({
     end
 })
 
-SectionMore:Toggle({
+SectionVisualMore:Toggle({
     Title = "Xray",
     Desc = "Lihat melalui objek",
     Icon = "scan-line",
@@ -2314,8 +2093,12 @@ SectionMore:Toggle({
 -- ============================================================
 local TabServer = Window:Tab({ Title = "Server", Icon = "server" })
 
+local antiAfkConn = nil
+
+local SectionServerTools = TabServer:Section({ Title = "Tools", Icon = "wrench", Opened = true })
+
 local autoRejoin = false
-TabServer:Toggle({
+SectionServerTools:Toggle({
     Title = "Auto Rejoin",
     Desc = "Auto masuk ulang saat disconnect",
     Icon = "refresh-cw",
@@ -2335,8 +2118,7 @@ TabServer:Toggle({
     end
 })
 
--- ANTI AFK
-TabServer:Toggle({
+SectionServerTools:Toggle({
     Title = "Anti AFK",
     Desc = "Mencegah kick karena AFK",
     Icon = "activity",
@@ -2355,9 +2137,9 @@ TabServer:Toggle({
     end
 })
 
-TabServer:Divider()
+local SectionServerActions = TabServer:Section({ Title = "Actions", Icon = "zap", Opened = true })
 
-TabServer:Button({
+SectionServerActions:Button({
     Title = "Rejoin",
     Desc = "Masuk ulang ke game ini",
     Icon = "log-in",
@@ -2366,7 +2148,7 @@ TabServer:Button({
     end
 })
 
-TabServer:Button({
+SectionServerActions:Button({
     Title = "Server Hop",
     Desc = "Pindah ke server lain",
     Icon = "shuffle",
@@ -2391,7 +2173,7 @@ TabServer:Button({
     end
 })
 
-TabServer:Button({
+SectionServerActions:Button({
     Title = "Server Friend",
     Desc = "Pindah ke server yang ada teman",
     Icon = "users",
@@ -2417,8 +2199,9 @@ TabServer:Button({
 -- ============================================================
 local TabDevTools = Window:Tab({ Title = "DevTools", Icon = "code" })
 
-local savedCoords = {}
+local savedCoords  = {}
 local selectedCoord = nil
+local coordNameValue = ""
 
 local function buildCoordCode()
     if next(savedCoords) == nil then
@@ -2429,10 +2212,7 @@ local function buildCoordCode()
     local i = 1
     for name, cf in pairs(savedCoords) do
         local p = cf.Position
-        table.insert(lines, string.format(
-            "%d. %s | X: %.2f, Y: %.2f, Z: %.2f",
-            i, name, p.X, p.Y, p.Z
-        ))
+        table.insert(lines, string.format("%d. %s | X: %.2f, Y: %.2f, Z: %.2f", i, name, p.X, p.Y, p.Z))
         i = i + 1
     end
     table.insert(lines, "")
@@ -2440,16 +2220,15 @@ local function buildCoordCode()
     table.insert(lines, "local savedPlaces = {")
     for name, cf in pairs(savedCoords) do
         local p = cf.Position
-        table.insert(lines, string.format(
-            '    ["%s"] = CFrame.new(%.2f, %.2f, %.2f),',
-            name, p.X, p.Y, p.Z
-        ))
+        table.insert(lines, string.format('    ["%s"] = CFrame.new(%.2f, %.2f, %.2f),', name, p.X, p.Y, p.Z))
     end
     table.insert(lines, "}")
     return table.concat(lines, "\n")
 end
 
-local coordCodeBlock = TabDevTools:Code({
+local SectionCoords = TabDevTools:Section({ Title = "Koordinat", Icon = "map-pin", Opened = true })
+
+local coordCodeBlock = SectionCoords:Code({
     Title = "Koordinat Tersimpan",
     Code = "-- Belum ada koordinat tersimpan",
     OnCopy = function()
@@ -2457,23 +2236,21 @@ local coordCodeBlock = TabDevTools:Code({
     end
 })
 
-local coordDropdown = TabDevTools:Dropdown({
+local coordDropdown = SectionCoords:Dropdown({
     Title = "Daftar Koordinat",
     Desc = "Pilih koordinat tersimpan",
     Values = {},
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedCoord = v
-    end
+    Callback = function(v) selectedCoord = v end
 })
 
-local coordNameInput = TabDevTools:Input({
+SectionCoords:Input({
     Title = "Nama Koordinat",
     Desc = "Nama untuk koordinat yang akan disimpan",
     Placeholder = "Contoh: checkpoint1",
     Value = "",
-    Callback = function(v) end
+    Callback = function(v) coordNameValue = v end
 })
 
 local function refreshCoordDropdown()
@@ -2484,7 +2261,7 @@ local function refreshCoordDropdown()
     coordCodeBlock:SetCode(buildCoordCode())
 end
 
-TabDevTools:Button({
+SectionCoords:Button({
     Title = "Save Koordinat",
     Desc = "Simpan posisi karakter saat ini",
     Icon = "save",
@@ -2494,14 +2271,16 @@ TabDevTools:Button({
             WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
             return
         end
-        local name = (coordNameValue ~= "" and coordNameValue) or ("checkpoint" .. (table.getn and table.getn(savedCoords) or #(function() local t={} for _ in pairs(savedCoords) do t[#t+1]=1 end return t end)()) + 1)
+        local count = 0
+        for _ in pairs(savedCoords) do count = count + 1 end
+        local name = (coordNameValue ~= "" and coordNameValue) or ("checkpoint" .. (count + 1))
         savedCoords[name] = hrp.CFrame
         refreshCoordDropdown()
         WindUI:Notify({ Title = "DevTools", Content = "Koordinat '" .. name .. "' disimpan!", Duration = 2, Icon = "save" })
     end
 })
 
-TabDevTools:Button({
+SectionCoords:Button({
     Title = "Refresh",
     Desc = "Refresh daftar koordinat",
     Icon = "refresh-cw",
@@ -2511,7 +2290,7 @@ TabDevTools:Button({
     end
 })
 
-TabDevTools:Button({
+SectionCoords:Button({
     Title = "Delete Koordinat",
     Desc = "Hapus koordinat yang dipilih",
     Icon = "trash",
@@ -2527,9 +2306,9 @@ TabDevTools:Button({
     end
 })
 
-TabDevTools:Divider()
+local SectionDevMore = TabDevTools:Section({ Title = "Tools", Icon = "terminal", Opened = true })
 
-TabDevTools:Button({
+SectionDevMore:Button({
     Title = "Dex Explorer",
     Desc = "Buka Dex Explorer (Dex++)",
     Icon = "terminal",
@@ -2546,18 +2325,18 @@ TabDevTools:Button({
 -- ============================================================
 local TabConfig = Window:Tab({ Title = "Config", Icon = "settings" })
 
-local ConfigManager = Window.ConfigManager
+local ConfigManager  = Window.ConfigManager
 local configInputValue = ""
 local selectedConfig = nil
 
-local configNameInput = TabConfig:Input({
+local SectionConfigSave = TabConfig:Section({ Title = "Save & Load", Icon = "save", Opened = true })
+
+SectionConfigSave:Input({
     Title = "Nama Config",
     Desc = "Masukkan nama config baru",
     Placeholder = "Contoh: myConfig",
     Value = "",
-    Callback = function(v)
-        configInputValue = v
-    end
+    Callback = function(v) configInputValue = v end
 })
 
 local function getConfigNames()
@@ -2567,18 +2346,16 @@ local function getConfigNames()
     return names
 end
 
-local configDropdown = TabConfig:Dropdown({
+local configDropdown = SectionConfigSave:Dropdown({
     Title = "Daftar Config",
     Desc = "Pilih config yang tersimpan",
     Values = getConfigNames(),
     Value = "",
     SearchBarEnabled = true,
-    Callback = function(v)
-        selectedConfig = v
-    end
+    Callback = function(v) selectedConfig = v end
 })
 
-TabConfig:Button({
+SectionConfigSave:Button({
     Title = "Save Config",
     Desc = "Simpan semua settingan saat ini",
     Icon = "save",
@@ -2586,13 +2363,12 @@ TabConfig:Button({
         local name = configInputValue ~= "" and configInputValue or "default"
         local cfg = ConfigManager:GetConfig(name) or ConfigManager:CreateConfig(name)
         cfg:Save()
-        local names = getConfigNames()
-        configDropdown:Refresh(names)
+        configDropdown:Refresh(getConfigNames())
         WindUI:Notify({ Title = "Config", Content = "Config '" .. name .. "' disimpan!", Duration = 2, Icon = "save" })
     end
 })
 
-TabConfig:Button({
+SectionConfigSave:Button({
     Title = "Apply Config",
     Desc = "Terapkan config yang dipilih",
     Icon = "check",
@@ -2611,18 +2387,17 @@ TabConfig:Button({
     end
 })
 
-TabConfig:Button({
+SectionConfigSave:Button({
     Title = "Refresh",
     Desc = "Refresh daftar config",
     Icon = "refresh-cw",
     Callback = function()
-        local names = getConfigNames()
-        configDropdown:Refresh(names)
+        configDropdown:Refresh(getConfigNames())
         WindUI:Notify({ Title = "Config", Content = "Daftar config diperbarui.", Duration = 2, Icon = "refresh-cw" })
     end
 })
 
-TabConfig:Button({
+SectionConfigSave:Button({
     Title = "Delete Config",
     Desc = "Hapus config yang dipilih",
     Icon = "trash",
@@ -2633,8 +2408,7 @@ TabConfig:Button({
         end
         ConfigManager:DeleteConfig(selectedConfig)
         selectedConfig = nil
-        local names = getConfigNames()
-        configDropdown:Refresh(names)
+        configDropdown:Refresh(getConfigNames())
         WindUI:Notify({ Title = "Config", Content = "Config dihapus.", Duration = 2, Icon = "trash" })
     end
 })
@@ -2650,21 +2424,23 @@ TabInfo:Image({
     Radius = 12
 })
 
-TabInfo:Paragraph({
+local SectionInfoAbout = TabInfo:Section({ Title = "About", Icon = "info", Opened = true })
+
+SectionInfoAbout:Paragraph({
     Title = "PieHub",
     Desc = "Version: 1.0.0\nBuild: Stable",
     Icon = "cookie",
 })
 
-TabInfo:Paragraph({
+SectionInfoAbout:Paragraph({
     Title = "Creator",
     Desc = "Dibuat oleh Dylphiiee\nTerimakasih sudah menggunakan PieHub!",
     Icon = "user",
 })
 
-TabInfo:Divider()
+local SectionInfoContact = TabInfo:Section({ Title = "Contact", Icon = "phone", Opened = true })
 
-TabInfo:Button({
+SectionInfoContact:Button({
     Title = "Discord",
     Desc = "Join server Discord kami",
     Icon = "message-circle",
@@ -2675,7 +2451,7 @@ TabInfo:Button({
     end
 })
 
-TabInfo:Button({
+SectionInfoContact:Button({
     Title = "WhatsApp",
     Desc = "Hubungi via WhatsApp",
     Icon = "phone",
