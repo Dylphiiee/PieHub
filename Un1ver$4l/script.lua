@@ -96,6 +96,52 @@ SectionMovement:Toggle({
     end
 })
 
+SectionMovement:Toggle({
+    Title = "Infinite Jump",
+    Desc = "Lompat tanpa batas",
+    Icon = "chevrons-up",
+    Value = false,
+    Callback = function(state)
+        if state then
+            infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
+                local hum = getHum()
+                if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+            end)
+        else
+            if infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
+        end
+    end
+})
+
+SectionMovement:Toggle({
+    Title = "No Clip",
+    Desc = "Tembus dinding",
+    Icon = "layers",
+    Value = false,
+    Callback = function(state)
+        if state then
+            noClipConn = RunService.Stepped:Connect(function()
+                local chr = getChar()
+                if chr then
+                    for _, p in pairs(chr:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                end
+            end)
+        else
+            if noClipConn then noClipConn:Disconnect() noClipConn = nil end
+            local chr = getChar()
+            if chr then
+                for _, p in pairs(chr:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = true end
+                end
+            end
+        end
+    end
+})
+
+SectionMovement:Divider()
+
 flyToggle = SectionMovement:Toggle({
     Title = "Fly",
     Desc = "Terbang mengikuti arah kamera",
@@ -181,47 +227,16 @@ flyToggle = SectionMovement:Toggle({
     end
 })
 
-SectionMovement:Toggle({
-    Title = "Infinite Jump",
-    Desc = "Lompat tanpa batas",
-    Icon = "chevrons-up",
-    Value = false,
-    Callback = function(state)
-        if state then
-            infJumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
-                local hum = getHum()
-                if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-            end)
-        else
-            if infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
-        end
-    end
-})
-
-SectionMovement:Toggle({
-    Title = "No Clip",
-    Desc = "Tembus dinding",
-    Icon = "layers",
-    Value = false,
-    Callback = function(state)
-        if state then
-            noClipConn = RunService.Stepped:Connect(function()
-                local chr = getChar()
-                if chr then
-                    for _, p in pairs(chr:GetDescendants()) do
-                        if p:IsA("BasePart") then p.CanCollide = false end
-                    end
-                end
-            end)
-        else
-            if noClipConn then noClipConn:Disconnect() noClipConn = nil end
-            local chr = getChar()
-            if chr then
-                for _, p in pairs(chr:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = true end
-                end
-            end
-        end
+SectionMovement:Slider({
+    Title = "Fly Speed",
+    Desc = "Kecepatan terbang | Default: 10",
+    Icon = "wind",
+    Step = 1,
+    Value = { Min = 1, Max = 200, Default = 10 },
+    IsTooltip = true,
+    IsTextbox = true,
+    Callback = function(v)
+        flySpeed = v
     end
 })
 
@@ -293,18 +308,6 @@ SectionMovement:Slider({
     end
 })
 
-SectionMovement:Slider({
-    Title = "Fly Speed",
-    Desc = "Kecepatan terbang | Default: 10",
-    Icon = "wind",
-    Step = 1,
-    Value = { Min = 1, Max = 200, Default = 10 },
-    IsTooltip = true,
-    IsTextbox = true,
-    Callback = function(v)
-        flySpeed = v
-    end
-})
 
 -- SECTION: PLAYER
 local SectionPlayer2 = TabPlayer:Section({ Title = "Player", Icon = "shield", Opened = true })
@@ -1186,137 +1189,250 @@ SectionMoreAnim:Button({
 -- ============================================================
 local TabAvatars = Window:Tab({ Title = "Avatars", Icon = "shirt" })
 
-local function applyAvatarFromUserId(userId)
-    local hum = getHum()
-    if not hum then
-        WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-        return false
-    end
-    local success, desc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(userId)
+local lastAvatarUsername = nil
+
+local function apply_avatar_method(username)
+    task.spawn(function()
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hum = char:WaitForChild("Humanoid", 10)
+        if not hum then
+            WindUI:Notify({ Title = "Error", Content = "Humanoid tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        local desc
+        local targetPlayer = nil
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Name:lower() == username:lower() then
+                targetPlayer = p
+                break
+            end
+        end
+
+        if targetPlayer and targetPlayer.Character then
+            local targetHum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if targetHum then
+                desc = targetHum:GetAppliedDescription()
+            end
+        end
+
+        if not desc then
+            local ok, userId = pcall(Players.GetUserIdFromNameAsync, Players, username)
+            if not ok then
+                WindUI:Notify({ Title = "Error", Content = "Username tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+                return
+            end
+            local ok2, d = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
+            if not ok2 then
+                WindUI:Notify({ Title = "Error", Content = "Gagal ambil avatar!", Duration = 2, Icon = "alert-circle" })
+                return
+            end
+            desc = d
+        end
+
+        for _, c in ipairs(char:GetChildren()) do
+            if c:IsA("Accessory")
+                or c:IsA("Hat")
+                or c:IsA("BodyColors")
+                or c:IsA("CharacterMesh")
+                or c:IsA("Shirt")
+                or c:IsA("Pants")
+                or c:IsA("ShirtGraphic") then
+                c:Destroy()
+            end
+        end
+
+        pcall(function()
+            if hum.ApplyDescriptionClientServer then
+                hum:ApplyDescriptionClientServer(desc)
+            else
+                hum:ApplyDescription(desc)
+            end
+        end)
+
+        local bc = char:FindFirstChildOfClass("BodyColors") or Instance.new("BodyColors")
+        bc.Parent = char
+        bc.HeadColor3      = desc.HeadColor
+        bc.TorsoColor3     = desc.TorsoColor
+        bc.LeftArmColor3   = desc.LeftArmColor
+        bc.RightArmColor3  = desc.RightArmColor
+        bc.LeftLegColor3   = desc.LeftLegColor
+        bc.RightLegColor3  = desc.RightLegColor
+
+        WindUI:Notify({ Title = "Avatars", Content = "Avatar '" .. username .. "' diterapkan!", Duration = 2, Icon = "check" })
     end)
-    if not success or not desc then
-        WindUI:Notify({ Title = "Error", Content = "Gagal ambil avatar! ID tidak valid.", Duration = 3, Icon = "alert-circle" })
-        return false
-    end
-    local ok = pcall(function() hum:ApplyDescription(desc) end)
-    if not ok then
-        WindUI:Notify({ Title = "Error", Content = "Gagal apply avatar.", Duration = 3, Icon = "alert-circle" })
-        return false
-    end
-    WindUI:Notify({ Title = "Avatars", Content = "Avatar diterapkan!", Duration = 2, Icon = "check" })
-    return true
+end
+
+local function apply_avatar_from_userid_method(userId)
+    task.spawn(function()
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hum = char:WaitForChild("Humanoid", 10)
+        if not hum then
+            WindUI:Notify({ Title = "Error", Content = "Humanoid tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        local ok, desc = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
+        if not ok or not desc then
+            WindUI:Notify({ Title = "Error", Content = "Gagal ambil avatar! ID tidak valid.", Duration = 3, Icon = "alert-circle" })
+            return
+        end
+
+        for _, c in ipairs(char:GetChildren()) do
+            if c:IsA("Accessory")
+                or c:IsA("Hat")
+                or c:IsA("BodyColors")
+                or c:IsA("CharacterMesh")
+                or c:IsA("Shirt")
+                or c:IsA("Pants")
+                or c:IsA("ShirtGraphic") then
+                c:Destroy()
+            end
+        end
+
+        pcall(function()
+            if hum.ApplyDescriptionClientServer then
+                hum:ApplyDescriptionClientServer(desc)
+            else
+                hum:ApplyDescription(desc)
+            end
+        end)
+
+        local bc = char:FindFirstChildOfClass("BodyColors") or Instance.new("BodyColors")
+        bc.Parent = char
+        bc.HeadColor3      = desc.HeadColor
+        bc.TorsoColor3     = desc.TorsoColor
+        bc.LeftArmColor3   = desc.LeftArmColor
+        bc.RightArmColor3  = desc.RightArmColor
+        bc.LeftLegColor3   = desc.LeftLegColor
+        bc.RightLegColor3  = desc.RightLegColor
+
+        WindUI:Notify({ Title = "Avatars", Content = "Avatar diterapkan!", Duration = 2, Icon = "check" })
+    end)
 end
 
 local function resetAvatar()
-    local hum = getHum()
-    if not hum then return end
-    local success, desc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
-    end)
-    if success and desc then
-        pcall(function() hum:ApplyDescription(desc) end)
-        WindUI:Notify({ Title = "Avatars", Content = "Avatar direset.", Duration = 2, Icon = "refresh-cw" })
-    else
-        WindUI:Notify({ Title = "Error", Content = "Gagal reset avatar.", Duration = 2, Icon = "alert-circle" })
-    end
+    lastAvatarUsername = nil
+    apply_avatar_from_userid_method(LocalPlayer.UserId)
 end
 
+-- Auto reapply saat respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if lastAvatarUsername then
+        char:WaitForChild("Humanoid", 10)
+        task.wait(0.65)
+        apply_avatar_method(lastAvatarUsername)
+    end
+end)
+
 local function applyItemById(assetId)
-    local hum = getHum()
-    if not hum then
-        WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-        return
-    end
-    local success, desc = pcall(function() return hum:GetAppliedDescription() end)
-    if not success or not desc then
-        success, desc = pcall(function()
-            return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
+    task.spawn(function()
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hum = char:WaitForChild("Humanoid", 10)
+        if not hum then
+            WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        local ok, result = pcall(function()
+            local ins = game:GetService("InsertService")
+            local model = ins:LoadAsset(assetId)
+            local accessory = model:FindFirstChildOfClass("Accessory")
+                or model:FindFirstChildOfClass("Hat")
+            if not accessory then
+                model:Destroy()
+                error("Bukan accessory!")
+            end
+            accessory.Parent = workspace
+            hum:AddAccessory(accessory)
+            model:Destroy()
         end)
-    end
-    if not success or not desc then
-        WindUI:Notify({ Title = "Error", Content = "Gagal ambil description.", Duration = 2, Icon = "alert-circle" })
-        return
-    end
-    local ok = pcall(function()
-        local blob = desc.AccessoryBlob
-        local parsed = HttpService:JSONDecode(blob ~= "" and blob or "[]")
-        table.insert(parsed, { AssetId = assetId, AccessoryType = 0 })
-        desc.AccessoryBlob = HttpService:JSONEncode(parsed)
-        hum:ApplyDescription(desc)
+
+        if ok then
+            WindUI:Notify({ Title = "Avatars", Content = "Item dipasang!", Duration = 2, Icon = "check" })
+        else
+            WindUI:Notify({ Title = "Error", Content = "Gagal pasang item: " .. tostring(result), Duration = 3, Icon = "alert-circle" })
+        end
     end)
-    if ok then
-        WindUI:Notify({ Title = "Avatars", Content = "Item dipasang!", Duration = 2, Icon = "check" })
-    else
-        WindUI:Notify({ Title = "Error", Content = "Gagal pasang item.", Duration = 3, Icon = "alert-circle" })
-    end
 end
 
 local function applyBundleItems(items)
-    local hum = getHum()
-    if not hum then
-        WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-        return
-    end
-    local success, desc = pcall(function() return hum:GetAppliedDescription() end)
-    if not success or not desc then
-        success, desc = pcall(function()
-            return Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
-        end)
-    end
-    if not success or not desc then
-        WindUI:Notify({ Title = "Error", Content = "Gagal ambil description.", Duration = 2, Icon = "alert-circle" })
-        return
-    end
-    local ok = pcall(function()
-        local blob = desc.AccessoryBlob
-        local parsed = HttpService:JSONDecode(blob ~= "" and blob or "[]")
-        for _, item in ipairs(items) do
-            table.insert(parsed, { AssetId = item.Id, AccessoryType = 0 })
+    task.spawn(function()
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hum = char:WaitForChild("Humanoid", 10)
+        if not hum then
+            WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
+            return
         end
-        desc.AccessoryBlob = HttpService:JSONEncode(parsed)
-        hum:ApplyDescription(desc)
+
+        local ins = game:GetService("InsertService")
+        local failCount = 0
+
+        for _, item in ipairs(items) do
+            local ok, result = pcall(function()
+                local model = ins:LoadAsset(item.Id)
+                local accessory = model:FindFirstChildOfClass("Accessory")
+                    or model:FindFirstChildOfClass("Hat")
+                if not accessory then
+                    model:Destroy()
+                    error("Bukan accessory!")
+                end
+                accessory.Parent = workspace
+                hum:AddAccessory(accessory)
+                model:Destroy()
+            end)
+            if not ok then
+                failCount = failCount + 1
+            end
+            task.wait(0.1)
+        end
+
+        if failCount == 0 then
+            WindUI:Notify({ Title = "Avatars", Content = "Bundle dipasang!", Duration = 2, Icon = "check" })
+        elseif failCount < #items then
+            WindUI:Notify({ Title = "Avatars", Content = "Bundle dipasang sebagian (" .. failCount .. " gagal)", Duration = 3, Icon = "alert-circle" })
+        else
+            WindUI:Notify({ Title = "Error", Content = "Semua item bundle gagal dipasang.", Duration = 3, Icon = "alert-circle" })
+        end
     end)
-    if ok then
-        WindUI:Notify({ Title = "Avatars", Content = "Bundle dipasang!", Duration = 2, Icon = "check" })
-    else
-        WindUI:Notify({ Title = "Error", Content = "Gagal pasang bundle.", Duration = 3, Icon = "alert-circle" })
-    end
 end
 
 local PresetItems = {
+    -- ======= BUNDLE =======
     {
         Title = "[Bundle] Korblox Deathspeaker",
         IsBundle = true,
         Items = {
-            { Name = "Korblox Lengan Kiri",  Id = 139607570 },
-            { Name = "Korblox Tangan Kanan", Id = 139607625 },
-            { Name = "Korblox Kaki Kiri",    Id = 139607673 },
-            { Name = "Korblox Kaki Kanan",   Id = 139607718 },
-            { Name = "Korblox Torso",        Id = 139607770 },
-            { Name = "Korblox Hood",         Id = 139610147 },
+            { Name = "Korblox Deathspeaker Lengan Kiri",  Id = 139607570 },
+            { Name = "Korblox Deathspeaker Tangan Kanan", Id = 139607625 },
+            { Name = "Kaki Kiri Korblox Deathspeaker",    Id = 139607673 },
+            { Name = "Kaki Kanan Korblox Deathspeaker",   Id = 139607718 },
+            { Name = "Torso Pembicara Kematian Korblox",  Id = 139607770 },
+            { Name = "Korblox Deathspeaker Hood",         Id = 139610147 },
         }
     },
-    { Title = "Korblox Lengan Kiri",                   IsBundle = false, Id = 139607570  },
-    { Title = "Korblox Tangan Kanan",                  IsBundle = false, Id = 139607625  },
-    { Title = "Korblox Kaki Kiri",                     IsBundle = false, Id = 139607673  },
-    { Title = "Korblox Kaki Kanan",                    IsBundle = false, Id = 139607718  },
-    { Title = "Korblox Torso",                         IsBundle = false, Id = 139607770  },
-    { Title = "Korblox Hood",                          IsBundle = false, Id = 139610147  },
-    { Title = "Kepala Tanpa Kepala",                   IsBundle = false, Id = 15093053680 },
-    { Title = "8-Bit HP Bar",                          IsBundle = false, Id = 10159610478 },
-    { Title = "Mahkota Royal 8-Bit",                   IsBundle = false, Id = 10159600649 },
-    { Title = "8-Bit Extra Life",                      IsBundle = false, Id = 10159606132 },
-    { Title = "8-Bit Roblox Coin",                     IsBundle = false, Id = 10159622004 },
-    { Title = "Ghosdeeri",                             IsBundle = false, Id = 183468963   },
-    { Title = "Poisoned Horns of the Toxic Wasteland", IsBundle = false, Id = 1744060292  },
-    { Title = "Fiery Horns of the Netherworld",        IsBundle = false, Id = 215718515   },
-    { Title = "Winter Fairy",                          IsBundle = false, Id = 141742418   },
-    { Title = "St. Patrick's Day Fairy",               IsBundle = false, Id = 226189871   },
-    { Title = "Fall Fairy",                            IsBundle = false, Id = 128217885   },
-    { Title = "Spring Fairy",                          IsBundle = false, Id = 150381051   },
-    { Title = "Crescendo The Soul Stealer",            IsBundle = false, Id = 94794774    },
-    { Title = "Azure Dragon's Magic Slayer",           IsBundle = false, Id = 268586231   },
+
+    -- ======= PER ITEM =======
+    { Title = "Korblox Deathspeaker Lengan Kiri",       IsBundle = false, Id = 139607570  },
+    { Title = "Korblox Deathspeaker Tangan Kanan",      IsBundle = false, Id = 139607625  },
+    { Title = "Kaki Kiri Korblox Deathspeaker",         IsBundle = false, Id = 139607673  },
+    { Title = "Kaki Kanan Korblox Deathspeaker",        IsBundle = false, Id = 139607718  },
+    { Title = "Torso Pembicara Kematian Korblox",       IsBundle = false, Id = 139607770  },
+    { Title = "Korblox Deathspeaker Hood",              IsBundle = false, Id = 139610147  },
+    { Title = "Kepala Tanpa Kepala",                    IsBundle = false, Id = 15093053680 },
+    { Title = "8-Bit HP Bar",                           IsBundle = false, Id = 10159610478 },
+    { Title = "Mahkota Royal 8-Bit",                    IsBundle = false, Id = 10159600649 },
+    { Title = "8-Bit Extra Life",                       IsBundle = false, Id = 10159606132 },
+    { Title = "8-Bit Roblox Coin",                      IsBundle = false, Id = 10159622004 },
+    { Title = "Ghosdeeri",                              IsBundle = false, Id = 183468963   },
+    { Title = "Poisoned Horns of the Toxic Wasteland",  IsBundle = false, Id = 1744060292  },
+    { Title = "Fiery Horns of the Netherworld",         IsBundle = false, Id = 215718515   },
+    { Title = "Winter Fairy",                           IsBundle = false, Id = 141742418   },
+    { Title = "St. Patrick's Day Fairy",                IsBundle = false, Id = 226189871   },
+    { Title = "Fall Fairy",                             IsBundle = false, Id = 128217885   },
+    { Title = "Spring Fairy",                           IsBundle = false, Id = 150381051   },
+    { Title = "Crescendo The Soul Stealer",             IsBundle = false, Id = 94794774    },
+    { Title = "Azure Dragon's Magic Slayer",            IsBundle = false, Id = 268586231   },
 }
 
 local customItems = {}
@@ -1385,14 +1501,8 @@ SectionAvatarUsername:Button({
             WindUI:Notify({ Title = "Error", Content = "Masukkan username dulu!", Duration = 2, Icon = "alert-circle" })
             return
         end
-        local success, userId = pcall(function()
-            return Players:GetUserIdFromNameAsync(avatarUsernameValue)
-        end)
-        if not success or not userId then
-            WindUI:Notify({ Title = "Error", Content = "Username tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        applyAvatarFromUserId(userId)
+        lastAvatarUsername = avatarUsernameValue
+        apply_avatar_method(avatarUsernameValue)
     end
 })
 
@@ -1425,7 +1535,7 @@ SectionAvatarUserId:Button({
             WindUI:Notify({ Title = "Error", Content = "User ID harus berupa angka!", Duration = 2, Icon = "alert-circle" })
             return
         end
-        applyAvatarFromUserId(id)
+        apply_avatar_from_userid_method(id)
     end
 })
 
@@ -1485,7 +1595,7 @@ SectionAvatarPlayer:Button({
             WindUI:Notify({ Title = "Error", Content = "Player tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
             return
         end
-        applyAvatarFromUserId(userId)
+        apply_avatar_from_userid_method(userId)
     end
 })
 
@@ -1498,9 +1608,9 @@ SectionAvatarPlayer:Button({
 
 -- SECTION: ITEM / ASSET ID
 local SectionAvatarItem = TabAvatars:Section({ Title = "Item / Asset ID", Icon = "package", Opened = true })
-local itemNameValue    = ""
-local itemAssetIdValue = ""
-local selectedItem     = nil
+local itemNameValue      = ""
+local itemAssetIdValue   = ""
+local selectedItem       = nil
 local selectedCustomItem = nil
 local itemDropdown
 local customItemDropdown
@@ -1540,6 +1650,20 @@ SectionAvatarItem:Button({
         itemDropdown:Refresh(buildPresetItemNames())
         customItemDropdown:Refresh(buildCustomItemNames())
         WindUI:Notify({ Title = "Avatars", Content = "Item '" .. itemNameValue .. "' disimpan!", Duration = 2, Icon = "save" })
+    end
+})
+
+SectionAvatarItem:Button({
+    Title = "Apply Asset ID Langsung",
+    Desc = "Pasang item dari Asset ID yang diinput",
+    Icon = "download",
+    Callback = function()
+        local id = tonumber(itemAssetIdValue)
+        if not id then
+            WindUI:Notify({ Title = "Error", Content = "Asset ID harus berupa angka!", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+        applyItemById(id)
     end
 })
 
