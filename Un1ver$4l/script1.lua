@@ -404,8 +404,8 @@ SectionInvis:Toggle({
                 if not getHRP() then return end
                 local origCF = hrp.CFrame
                 local origOffset = hum.CameraOffset
-                hrp.CFrame = origCF * CFrame.new(0, -200000, 0)
-                hum.CameraOffset = (origCF * CFrame.new(0, -200000, 0)):ToObjectSpace(CFrame.new(origCF.Position)).Position
+                hrp.CFrame = origCF * CFrame.new(0, -2000, 0)
+                hum.CameraOffset = (origCF * CFrame.new(0, -2000, 0)):ToObjectSpace(CFrame.new(origCF.Position)).Position
                 RunService.RenderStepped:Wait()
                 hrp.CFrame = origCF
                 hum.CameraOffset = origOffset
@@ -443,8 +443,8 @@ SectionInvis:Toggle({
                 if not getHRP() then return end
                 local origCF = hrp.CFrame
                 local origOffset = hum.CameraOffset
-                hrp.CFrame = origCF * CFrame.new(0, 200000, 0)
-                hum.CameraOffset = (origCF * CFrame.new(0, 200000, 0)):ToObjectSpace(CFrame.new(origCF.Position)).Position
+                hrp.CFrame = origCF * CFrame.new(0, 2000, 0)
+                hum.CameraOffset = (origCF * CFrame.new(0, 2000, 0)):ToObjectSpace(CFrame.new(origCF.Position)).Position
                 RunService.RenderStepped:Wait()
                 hrp.CFrame = origCF
                 hum.CameraOffset = origOffset
@@ -2968,14 +2968,14 @@ SectionCoords:Button({
 local SectionDevMore = TabDevTools:Section({ Title = "Tools", Icon = "terminal", Opened = true })
 
 SectionDevMore:Button({
-    Title = "Dex Explorer",
-    Desc = "Buka Dex Explorer (Dex++)",
+    Title = "Piehub Explorer",
+    Desc = "Buka Piehub Explorer",
     Icon = "terminal",
     Callback = function()
         pcall(function()
             loadstring(game:HttpGet("https://raw.githubusercontent.com/Dylphiiee/PieHub/refs/heads/main/Un1ver%244l/dex.lua"))()
         end)
-        WindUI:Notify({ Title = "DevTools", Content = "Dex Explorer dibuka!", Duration = 2, Icon = "terminal" })
+        WindUI:Notify({ Title = "DevTools", Content = "Piehub Explorer dibuka!", Duration = 2, Icon = "terminal" })
     end
 })
 
