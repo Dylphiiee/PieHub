@@ -1606,146 +1606,6 @@ SectionAvatarPlayer:Button({
     Callback = function() resetAvatar() end
 })
 
--- SECTION: ITEM / ASSET ID
-local SectionAvatarItem = TabAvatars:Section({ Title = "Item / Asset ID", Icon = "package", Opened = true })
-local itemNameValue      = ""
-local itemAssetIdValue   = ""
-local selectedItem       = nil
-local selectedCustomItem = nil
-local itemDropdown
-local customItemDropdown
-
-SectionAvatarItem:Input({
-    Title = "Nama",
-    Desc = "Nama item untuk disimpan",
-    Placeholder = "Contoh: My Hat",
-    Value = "",
-    Callback = function(v) itemNameValue = v end
-})
-
-SectionAvatarItem:Input({
-    Title = "Asset ID",
-    Desc = "Asset ID item Roblox (angka di URL catalog)",
-    Placeholder = "Contoh: 139610147",
-    Value = "",
-    Callback = function(v) itemAssetIdValue = v end
-})
-
-SectionAvatarItem:Button({
-    Title = "Save",
-    Desc = "Simpan item custom",
-    Icon = "save",
-    Callback = function()
-        if itemNameValue == "" then
-            WindUI:Notify({ Title = "Error", Content = "Masukkan nama item dulu!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        local id = tonumber(itemAssetIdValue)
-        if not id then
-            WindUI:Notify({ Title = "Error", Content = "Asset ID harus berupa angka!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        customItems[itemNameValue] = id
-        saveCustomItems()
-        itemDropdown:Refresh(buildPresetItemNames())
-        customItemDropdown:Refresh(buildCustomItemNames())
-        WindUI:Notify({ Title = "Avatars", Content = "Item '" .. itemNameValue .. "' disimpan!", Duration = 2, Icon = "save" })
-    end
-})
-
-SectionAvatarItem:Button({
-    Title = "Apply Asset ID Langsung",
-    Desc = "Pasang item dari Asset ID yang diinput",
-    Icon = "download",
-    Callback = function()
-        local id = tonumber(itemAssetIdValue)
-        if not id then
-            WindUI:Notify({ Title = "Error", Content = "Asset ID harus berupa angka!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        applyItemById(id)
-    end
-})
-
-SectionAvatarItem:Divider()
-
-itemDropdown = SectionAvatarItem:Dropdown({
-    Title = "Pilih Item / Bundle",
-    Desc = "Daftar item & bundle tersedia",
-    Values = buildPresetItemNames(),
-    Value = "",
-    SearchBarEnabled = true,
-    Callback = function(v) selectedItem = v end
-})
-
-SectionAvatarItem:Button({
-    Title = "Apply",
-    Desc = "Pasang item / bundle yang dipilih",
-    Icon = "check",
-    Callback = function()
-        if not selectedItem then
-            WindUI:Notify({ Title = "Error", Content = "Pilih item dulu!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        local data = getPresetItemData(selectedItem)
-        if not data then
-            WindUI:Notify({ Title = "Error", Content = "Item tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        if data.IsBundle then
-            applyBundleItems(data.Items)
-        else
-            applyItemById(data.Id)
-        end
-    end
-})
-
-SectionAvatarItem:Button({
-    Title = "Refresh",
-    Desc = "Refresh daftar item",
-    Icon = "refresh-cw",
-    Callback = function()
-        itemDropdown:Refresh(buildPresetItemNames())
-        WindUI:Notify({ Title = "Avatars", Content = "Daftar item diperbarui.", Duration = 2, Icon = "refresh-cw" })
-    end
-})
-
-SectionAvatarItem:Button({
-    Title = "Reset",
-    Desc = "Kembalikan avatar ke default",
-    Icon = "refresh-cw",
-    Callback = function() resetAvatar() end
-})
-
-SectionAvatarItem:Divider()
-
-customItemDropdown = SectionAvatarItem:Dropdown({
-    Title = "Item Custom Tersimpan",
-    Desc = "Daftar item custom kamu",
-    Values = buildCustomItemNames(),
-    Value = "",
-    SearchBarEnabled = true,
-    Callback = function(v) selectedCustomItem = v end
-})
-
-SectionAvatarItem:Button({
-    Title = "Delete",
-    Desc = "Hapus item custom yang dipilih",
-    Icon = "trash",
-    Callback = function()
-        if not selectedCustomItem or not customItems[selectedCustomItem] then
-            WindUI:Notify({ Title = "Error", Content = "Pilih item custom dulu!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-        customItems[selectedCustomItem] = nil
-        selectedCustomItem = nil
-        saveCustomItems()
-        itemDropdown:Refresh(buildPresetItemNames())
-        customItemDropdown:Refresh(buildCustomItemNames())
-        WindUI:Notify({ Title = "Avatars", Content = "Item dihapus.", Duration = 2, Icon = "trash" })
-    end
-})
-
 -- ============================================================
 -- TAB: TELEPORT
 -- ============================================================
@@ -2433,14 +2293,14 @@ SectionCoords:Button({
 local SectionDevMore = TabDevTools:Section({ Title = "Tools", Icon = "terminal", Opened = true })
 
 SectionDevMore:Button({
-    Title = "Dex Explorer",
-    Desc = "Buka Dex Explorer (Dex++)",
+    Title = "Piehub Explorer",
+    Desc = "Buka Piehub Explorer (Dex++)",
     Icon = "terminal",
     Callback = function()
         pcall(function()
-            loadstring(game:HttpGet("https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/Dylphiiee/PieHub/refs/heads/main/Un1ver%244l/dex.lua"))()
         end)
-        WindUI:Notify({ Title = "DevTools", Content = "Dex Explorer dibuka!", Duration = 2, Icon = "terminal" })
+        WindUI:Notify({ Title = "DevTools", Content = "Piehub Explorer dibuka!", Duration = 2, Icon = "terminal" })
     end
 })
 
