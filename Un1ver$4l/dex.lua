@@ -1,5 +1,5 @@
 -- ============================================================
--- PieHub Event Recorder v1.0.0
+-- Piehub Explorer v1.0.0
 -- Made by Dylphiiee
 -- ============================================================
 
@@ -24,7 +24,7 @@ local Camera            = workspace.CurrentCamera
 -- WINDOW
 -- ============================================================
 local Window = WindUI:CreateWindow({
-    Title      = "PieHub Recorder",
+    Title      = "Piehub Explorer",
     Icon       = "cookie",
     Author     = "by Dylphiiee",
     Folder     = "PieHub",
@@ -787,7 +787,7 @@ TabAna:Button({
 local TabInfo = Window:Tab({ Title = "Info", Icon = "info" })
 
 TabInfo:Paragraph({
-    Title = "PieHub Event Recorder",
+    Title = "Piehub Explorer",
     Desc  = "Version: 1.0.0 | Made by Dylphiiee\nUniversal game event recorder & analyzer.",
     Icon  = "activity",
 })
