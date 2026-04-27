@@ -37,11 +37,9 @@ local Window = WindUI:CreateWindow({
 Window:EditOpenButton({
     Title           = "",
     Icon            = "cookie",
-    CornerRadius    = UDim.new(1, 0),
-    StrokeThickness = 1,
     OnlyMobile      = false,
     Enabled         = true,
-    Draggable       = true,
+    Draggable       = false,
 })
 
 WindUI:Notify({
