@@ -6,6 +6,7 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
+local Debris = game:GetService("Debris")
 local LocalPlayer = Players.LocalPlayer
 
 WindUI:SetNotificationLower(true)
@@ -41,10 +42,288 @@ local function getHRP()
     return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- ================================================================
--- Tab: About (paling atas)
--- ================================================================
+-- Anti Fling system
+local antiFlingEnabled = false
+local antiFlingData = {}
+local antiFlingConn = nil
 
+local function restoreAntiFling()
+    for part, data in pairs(antiFlingData) do
+        if part and part.Parent then
+            pcall(function()
+                part.CanCollide = data.CanCollide
+                part.Massless = data.Massless
+            end)
+        end
+    end
+    antiFlingData = {}
+end
+
+local function startAntiFling()
+    if antiFlingConn then antiFlingConn:Disconnect() antiFlingConn = nil end
+    antiFlingConn = RunService.Stepped:Connect(function()
+        if not antiFlingEnabled then return end
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                for _, part in pairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        if part.AssemblyLinearVelocity.Magnitude > 100 then
+                            part.AssemblyLinearVelocity = Vector3.zero
+                            part.AssemblyAngularVelocity = Vector3.zero
+                        end
+                        part.CanCollide = false
+                        part.Massless = true
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- NaN Fling system
+local function charFromPart(part)
+    local m = part and part.Parent
+    if not m then return nil end
+    if m:IsA("Accessory") then m = m.Parent end
+    if m and m:FindFirstChildWhichIsA("Humanoid") then return m end
+end
+
+local function doNaNFling(targetPart)
+    local char = getChar()
+    local hrp = getHRP()
+    local hum = getHum()
+    if not char or not hrp or not hum then return end
+    if not targetPart or not targetPart.Parent then return end
+    local targetChar = charFromPart(targetPart)
+    if targetChar then
+        for _, p in pairs(targetChar:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+    local origCF = hrp.CFrame
+    hrp.CFrame = targetPart.CFrame
+    pcall(function()
+        sethiddenproperty(hum, "MoveDirectionInternal", Vector3.new(0/0, 0/0, 0/0))
+        sethiddenproperty(hum, "NetworkHumanoidState", Enum.HumanoidStateType.Freefall)
+    end)
+    hrp.Velocity = Vector3.new(0/0, 0/0, 0/0)
+    hrp.RotVelocity = Vector3.new(0/0, 0/0, 0/0)
+    hrp.AssemblyLinearVelocity = Vector3.new(0/0, 0/0, 0/0)
+    hrp.AssemblyAngularVelocity = Vector3.new(0/0, 0/0, 0/0)
+    for _, p in pairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then
+            p.Velocity = Vector3.new(0/0, 0/0, 0/0)
+            p.RotVelocity = Vector3.new(0/0, 0/0, 0/0)
+            p.AssemblyLinearVelocity = Vector3.new(0/0, 0/0, 0/0)
+            p.AssemblyAngularVelocity = Vector3.new(0/0, 0/0, 0/0)
+        end
+    end
+    hum:ChangeState(Enum.HumanoidStateType.Freefall)
+    task.wait(0.1)
+    pcall(function() hrp.CFrame = origCF end)
+end
+
+-- Punch/Kick Fling system (berdasarkan FE punch script)
+local PunchPower = 50
+local PunchTime = 30
+local punchActive = false
+local kickActive = false
+local punchTool = nil
+local kickTool = nil
+
+local function getRightArm()
+    local chr = getChar()
+    if not chr then return nil end
+    return chr:FindFirstChild("Right Arm") or chr:FindFirstChild("RightLowerArm")
+end
+
+local function getLeftLeg()
+    local chr = getChar()
+    if not chr then return nil end
+    return chr:FindFirstChild("Left Leg") or chr:FindFirstChild("LeftLowerLeg")
+end
+
+local function removePunchTool()
+    if punchTool and punchTool.Parent then punchTool:Destroy() punchTool = nil end
+end
+
+local function removeKickTool()
+    if kickTool and kickTool.Parent then kickTool:Destroy() kickTool = nil end
+end
+
+local function createPunchFling()
+    removePunchTool()
+    local chr = getChar()
+    local hum = getHum()
+    if not chr or not hum then return end
+    local rigType = hum.RigType
+    local rightArm = getRightArm()
+    if not rightArm then return end
+
+    local tool = Instance.new("Tool", LocalPlayer.Backpack)
+    tool.RequiresHandle = false
+    tool.Name = "PiePunch"
+    tool.ToolTip = "Punch Fling"
+    punchTool = tool
+
+    local anim = Instance.new("Animation", tool)
+    if rigType == Enum.HumanoidRigType.R6 then
+        anim.AnimationId = "rbxassetid://28156406"
+    else
+        anim.AnimationId = "rbxassetid://10717116749"
+    end
+
+    local track = hum:LoadAnimation(anim)
+    local punching = false
+
+    tool.Activated:Connect(function()
+        if not punching and punchActive then
+            punching = true
+            track:Play()
+            if rigType == Enum.HumanoidRigType.R6 then
+                task.wait(0.2)
+                track:AdjustSpeed(3)
+            else
+                track.TimePosition = 1.65
+                track.Looped = false
+                track:AdjustSpeed(1.1)
+            end
+
+            local times = 0
+            rightArm.CanCollide = true
+
+            -- Fling logic menggunakan velocity injection seperti FE punch
+            repeat
+                RunService.Heartbeat:Wait()
+                rightArm.CanCollide = true
+                times = times + 1
+
+                local root = getHRP()
+                local movel = 0.1
+
+                while not (chr and chr.Parent and root and root.Parent) do
+                    RunService.Heartbeat:Wait()
+                    root = getHRP()
+                end
+
+                -- Cek touching parts dari right arm untuk fling
+                for _, touchedPart in pairs(rightArm:GetTouchingParts()) do
+                    local touchedChar = touchedPart.Parent
+                    if touchedChar and touchedChar:FindFirstChildWhichIsA("Humanoid") then
+                        local targetPlayer = Players:GetPlayerFromCharacter(touchedChar)
+                        if targetPlayer and targetPlayer ~= LocalPlayer then
+                            local targetHRP = touchedChar:FindFirstChild("HumanoidRootPart")
+                            if targetHRP then
+                                -- Inject NaN velocity ke target melalui posisi kita
+                                doNaNFling(targetHRP)
+                            end
+                        end
+                    end
+                end
+
+                local vel = root.Velocity
+                root.Velocity = vel * PunchPower + Vector3.new(0, PunchPower, 0)
+
+                RunService.RenderStepped:Wait()
+                if chr and chr.Parent and root and root.Parent then
+                    root.Velocity = vel
+                end
+
+                RunService.Stepped:Wait()
+                if chr and chr.Parent and root and root.Parent then
+                    root.Velocity = vel + Vector3.new(0, movel, 0)
+                    movel = movel * -1
+                end
+            until times == PunchTime
+
+            punching = false
+        end
+    end)
+end
+
+local function createKickFling()
+    removeKickTool()
+    local chr = getChar()
+    local hum = getHum()
+    if not chr or not hum then return end
+    local rigType = hum.RigType
+    local leftLeg = getLeftLeg()
+    if not leftLeg then return end
+
+    local tool = Instance.new("Tool", LocalPlayer.Backpack)
+    tool.RequiresHandle = false
+    tool.Name = "PieKick"
+    tool.ToolTip = "Drop Kick Fling"
+    kickTool = tool
+
+    -- Gunakan animasi drop kick
+    local anim = Instance.new("Animation", tool)
+    anim.AnimationId = "rbxassetid://133566007754001"
+
+    local track = hum:LoadAnimation(anim)
+    local kicking = false
+
+    tool.Activated:Connect(function()
+        if not kicking and kickActive then
+            kicking = true
+            track:Play()
+            track:AdjustSpeed(1.2)
+
+            task.wait(0.15)
+
+            local times = 0
+            leftLeg.CanCollide = true
+
+            repeat
+                RunService.Heartbeat:Wait()
+                leftLeg.CanCollide = true
+                times = times + 1
+
+                local root = getHRP()
+                local movel = 0.1
+
+                while not (chr and chr.Parent and root and root.Parent) do
+                    RunService.Heartbeat:Wait()
+                    root = getHRP()
+                end
+
+                -- Cek touching parts dari left leg untuk fling
+                for _, touchedPart in pairs(leftLeg:GetTouchingParts()) do
+                    local touchedChar = touchedPart.Parent
+                    if touchedChar and touchedChar:FindFirstChildWhichIsA("Humanoid") then
+                        local targetPlayer = Players:GetPlayerFromCharacter(touchedChar)
+                        if targetPlayer and targetPlayer ~= LocalPlayer then
+                            local targetHRP = touchedChar:FindFirstChild("HumanoidRootPart")
+                            if targetHRP then
+                                doNaNFling(targetHRP)
+                            end
+                        end
+                    end
+                end
+
+                local vel = root.Velocity
+                root.Velocity = vel * PunchPower + Vector3.new(0, PunchPower * 1.5, 0)
+
+                RunService.RenderStepped:Wait()
+                if chr and chr.Parent and root and root.Parent then
+                    root.Velocity = vel
+                end
+
+                RunService.Stepped:Wait()
+                if chr and chr.Parent and root and root.Parent then
+                    root.Velocity = vel + Vector3.new(0, movel, 0)
+                    movel = movel * -1
+                end
+            until times == PunchTime
+
+            kicking = false
+        end
+    end)
+end
+
+-- ============================================================
+-- TAB: ABOUT
+-- ============================================================
 local TabAbout = Window:Tab({ Title = "About", Icon = "info" })
 
 TabAbout:Image({ Image = "rbxassetid://5107182114", AspectRatio = "16:9", Radius = 12 })
@@ -71,10 +350,9 @@ SectionInfoContact:Button({
     end
 })
 
--- ================================================================
--- Tab: Player
--- ================================================================
-
+-- ============================================================
+-- TAB: PLAYER
+-- ============================================================
 local TabPlayer = Window:Tab({ Title = "Player", Icon = "user" })
 
 local flyEnabled = false
@@ -200,22 +478,17 @@ flyToggle = SectionMovement:Toggle({
             if not torso then return end
             hum.PlatformStand = true
             local bg = Instance.new("BodyGyro", torso)
-            bg.P = 9e4
-            bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-            bg.CFrame = torso.CFrame
+            bg.P = 9e4 bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9) bg.CFrame = torso.CFrame
             local bv = Instance.new("BodyVelocity", torso)
-            bv.Velocity = Vector3.new(0, 0.1, 0)
-            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            bv.Velocity = Vector3.new(0, 0.1, 0) bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
             task.spawn(function()
                 while flyEnabled do
                     RunService.RenderStepped:Wait()
                     local h2 = getHum()
                     if not h2 then break end
                     local camCF = workspace.CurrentCamera.CFrame
-                    local lookVec = camCF.LookVector
-                    local rightVec = camCF.RightVector
-                    local md = h2.MoveDirection
-                    local moveDir = Vector3.zero
+                    local lookVec = camCF.LookVector local rightVec = camCF.RightVector
+                    local md = h2.MoveDirection local moveDir = Vector3.zero
                     if md.Magnitude > 0 then
                         local flatMD = Vector3.new(md.X, 0, md.Z)
                         if flatMD.Magnitude > 0 then flatMD = flatMD.Unit end
@@ -227,13 +500,10 @@ flyToggle = SectionMovement:Toggle({
                         moveDir = moveDir + camRight * flatMD:Dot(camRight)
                     end
                     if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
-                    bv.Velocity = moveDir * flySpeed
-                    bg.CFrame = camCF
+                    bv.Velocity = moveDir * flySpeed bg.CFrame = camCF
                 end
-                bg:Destroy()
-                bv:Destroy()
-                local h3 = getHum()
-                local c3 = getChar()
+                bg:Destroy() bv:Destroy()
+                local h3 = getHum() local c3 = getChar()
                 if h3 then
                     h3.PlatformStand = false
                     for _, st in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
@@ -256,10 +526,9 @@ SectionMovement:Slider({
 SectionMovement:Divider()
 
 SectionMovement:Toggle({
-    Title = "Bunny Hop", Desc = "Auto lompat saat berlari (Support PC & Mobile)", Icon = "rabbit", Value = false,
+    Title = "Bunny Hop", Desc = "Auto lompat saat berlari", Icon = "rabbit", Value = false,
     Callback = function(state)
-        bunnyhopEnabled = state
-        bunnyhopIsJumping = false
+        bunnyhopEnabled = state bunnyhopIsJumping = false
         if state then startBunnyhopLoop() end
     end
 })
@@ -390,6 +659,26 @@ SectionPlayer2:Toggle({
     end
 })
 
+SectionPlayer2:Divider()
+
+SectionPlayer2:Toggle({
+    Title = "Anti Fling",
+    Desc = "Cegah di-fling: nonaktifkan collision, velocity & mass semua pemain lain",
+    Icon = "shield-off",
+    Value = false,
+    Callback = function(state)
+        antiFlingEnabled = state
+        if state then
+            startAntiFling()
+            WindUI:Notify({ Title = "Anti Fling", Content = "Anti Fling aktif!", Duration = 2, Icon = "shield-off" })
+        else
+            if antiFlingConn then antiFlingConn:Disconnect() antiFlingConn = nil end
+            restoreAntiFling()
+            WindUI:Notify({ Title = "Anti Fling", Content = "Anti Fling nonaktif.", Duration = 2, Icon = "shield" })
+        end
+    end
+})
+
 local SectionInvis = TabPlayer:Section({ Title = "Invisible", Icon = "eye-off", Opened = true })
 
 SectionInvis:Toggle({
@@ -448,50 +737,306 @@ SectionInvis:Toggle({
     end
 })
 
--- ================================================================
--- Tab: Animations
--- ================================================================
+-- ============================================================
+-- TAB: TROLL
+-- ============================================================
+local TabTroll = Window:Tab({ Title = "Troll", Icon = "skull" })
 
+local targetPlayer = nil
+local activeLoops = {}
+local activeStates = {}
+local currentPlatform = nil
+local flingModeActive = false
+
+local function getPlayerHRP(player)
+    return player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function isAlive(player)
+    return player.Character
+        and player.Character:FindFirstChild("Humanoid")
+        and player.Character.Humanoid.Health > 0
+end
+
+local function playEmoteOnSelf(animationId, speed)
+    local chr = LocalPlayer.Character
+    if not chr then return nil end
+    local hum = chr:FindFirstChild("Humanoid")
+    if not hum then return nil end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://" .. tostring(animationId)
+    local track = hum:LoadAnimation(anim)
+    track:Play()
+    if speed then track:AdjustSpeed(speed) end
+    return track
+end
+
+local function stopAllAnimations()
+    local chr = LocalPlayer.Character
+    if chr then
+        local hum = chr:FindFirstChild("Humanoid")
+        if hum then
+            for _, track in pairs(hum:GetPlayingAnimationTracks()) do
+                pcall(function() track:Stop() end)
+            end
+        end
+    end
+end
+
+local function getPlayerList()
+    local list = {}
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer then table.insert(list, v.Name) end
+    end
+    return list
+end
+
+local SectionTarget = TabTroll:Section({ Title = "Target", Icon = "target", Opened = true })
+
+local targetDropdown = SectionTarget:Dropdown({
+    Title = "Target List", Desc = "Pilih pemain yang akan jadi target",
+    Values = getPlayerList(), Value = "",
+    Callback = function(value)
+        for _, v in pairs(Players:GetPlayers()) do
+            if v.Name == value then targetPlayer = v break end
+        end
+    end
+})
+
+SectionTarget:Button({
+    Title = "Refresh", Desc = "Refresh daftar player", Icon = "refresh-cw",
+    Callback = function()
+        targetDropdown:Refresh(getPlayerList())
+        WindUI:Notify({ Title = "Refresh", Content = "Daftar player diperbarui.", Duration = 2, Icon = "refresh-cw" })
+    end
+})
+
+local targetDisplay = SectionTarget:Paragraph({
+    Title = "Current Target", Desc = "Belum ada target", Icon = "circle-off",
+})
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if targetPlayer and isAlive(targetPlayer) then
+            targetDisplay:SetTitle(targetPlayer.Name)
+            targetDisplay:SetDesc("HP: " .. math.floor(targetPlayer.Character.Humanoid.Health))
+        elseif targetPlayer then
+            targetDisplay:SetTitle("Target Down")
+            targetDisplay:SetDesc(targetPlayer.Name .. " is dead")
+        else
+            targetDisplay:SetTitle("No Target")
+            targetDisplay:SetDesc("Select from dropdown")
+        end
+    end
+end)
+
+TabTroll:Divider()
+
+local SusSection = TabTroll:Section({ Title = "SUS", Icon = "eye", Opened = true })
+
+SusSection:Toggle({
+    Title = "DOGGY NORMAL", Desc = "Membelakangi target di DEPAN dengan animasi doggy",
+    Icon = "dog", Value = false,
+    Callback = function(state)
+        if state then
+            if not targetPlayer then
+                WindUI:Notify({ Title = "Error", Content = "Pilih target dulu!", Duration = 2, Icon = "alert-circle" }) return
+            end
+            activeStates["doggy"] = true
+            playEmoteOnSelf(80401449796551, 1)
+            currentPlatform = Instance.new("Part")
+            currentPlatform.Size = Vector3.new(8, 0.5, 8)
+            currentPlatform.Transparency = 1 currentPlatform.Anchored = true
+            currentPlatform.CanCollide = true currentPlatform.Parent = workspace
+            activeLoops["doggy"] = RunService.Heartbeat:Connect(function()
+                if activeStates["doggy"] and targetPlayer and isAlive(targetPlayer) and getPlayerHRP(targetPlayer) and getPlayerHRP(LocalPlayer) then
+                    currentPlatform.Position = getPlayerHRP(targetPlayer).Position + Vector3.new(0, -3, 0)
+                    local targetPos = getPlayerHRP(targetPlayer).Position
+                    local targetLook = getPlayerHRP(targetPlayer).CFrame.LookVector
+                    local frontPos = targetPos + targetLook * 2.5
+                    getPlayerHRP(LocalPlayer).CFrame = CFrame.new(frontPos, targetPos) * CFrame.Angles(0, math.pi, 0)
+                end
+            end)
+        else
+            activeStates["doggy"] = false
+            if activeLoops["doggy"] then activeLoops["doggy"]:Disconnect() activeLoops["doggy"] = nil end
+            if currentPlatform then currentPlatform:Destroy() currentPlatform = nil end
+            stopAllAnimations()
+        end
+    end
+})
+
+SusSection:Divider()
+
+SusSection:Toggle({
+    Title = "DOGGY LICK", Desc = "Menghadap target di DEPAN dengan animasi doggy",
+    Icon = "dog", Value = false,
+    Callback = function(state)
+        if state then
+            if not targetPlayer then
+                WindUI:Notify({ Title = "Error", Content = "Pilih target dulu!", Duration = 2, Icon = "alert-circle" }) return
+            end
+            activeStates["doggylick"] = true
+            playEmoteOnSelf(80401449796551, 1)
+            currentPlatform = Instance.new("Part")
+            currentPlatform.Size = Vector3.new(8, 0.5, 8)
+            currentPlatform.Transparency = 1 currentPlatform.Anchored = true
+            currentPlatform.CanCollide = true currentPlatform.Parent = workspace
+            activeLoops["doggylick"] = RunService.Heartbeat:Connect(function()
+                if activeStates["doggylick"] and targetPlayer and isAlive(targetPlayer) and getPlayerHRP(targetPlayer) and getPlayerHRP(LocalPlayer) then
+                    currentPlatform.Position = getPlayerHRP(targetPlayer).Position + Vector3.new(0, -3, 0)
+                    local targetPos = getPlayerHRP(targetPlayer).Position
+                    local targetLook = getPlayerHRP(targetPlayer).CFrame.LookVector
+                    local frontPos = targetPos + targetLook * 2.5
+                    getPlayerHRP(LocalPlayer).CFrame = CFrame.new(frontPos, targetPos)
+                end
+            end)
+        else
+            activeStates["doggylick"] = false
+            if activeLoops["doggylick"] then activeLoops["doggylick"]:Disconnect() activeLoops["doggylick"] = nil end
+            if currentPlatform then currentPlatform:Destroy() currentPlatform = nil end
+            stopAllAnimations()
+        end
+    end
+})
+
+SusSection:Divider()
+
+SusSection:Toggle({
+    Title = "ANNOY POKE", Desc = "Mengikuti target di BELAKANG dengan animasi shake hip",
+    Icon = "hand", Value = false,
+    Callback = function(state)
+        if state then
+            if not targetPlayer then
+                WindUI:Notify({ Title = "Error", Content = "Pilih target dulu!", Duration = 2, Icon = "alert-circle" }) return
+            end
+            activeStates["poke"] = true
+            playEmoteOnSelf(132457193718612, 1)
+            currentPlatform = Instance.new("Part")
+            currentPlatform.Size = Vector3.new(8, 0.5, 8)
+            currentPlatform.Transparency = 1 currentPlatform.Anchored = true
+            currentPlatform.CanCollide = true currentPlatform.Parent = workspace
+            activeLoops["poke"] = RunService.Heartbeat:Connect(function()
+                if activeStates["poke"] and targetPlayer and isAlive(targetPlayer) and getPlayerHRP(targetPlayer) and getPlayerHRP(LocalPlayer) then
+                    currentPlatform.Position = getPlayerHRP(targetPlayer).Position + Vector3.new(0, -3, 0)
+                    local targetPos = getPlayerHRP(targetPlayer).Position
+                    local targetLook = getPlayerHRP(targetPlayer).CFrame.LookVector
+                    local behindPos = targetPos - targetLook * 2
+                    getPlayerHRP(LocalPlayer).CFrame = CFrame.new(behindPos, targetPos)
+                end
+            end)
+        else
+            activeStates["poke"] = false
+            if activeLoops["poke"] then activeLoops["poke"]:Disconnect() activeLoops["poke"] = nil end
+            if currentPlatform then currentPlatform:Destroy() currentPlatform = nil end
+            stopAllAnimations()
+        end
+    end
+})
+
+TabTroll:Divider()
+
+local FlingSection = TabTroll:Section({ Title = "FLING", Icon = "rocket", Opened = true })
+
+-- Punch Fling dengan metode FE punch
+FlingSection:Paragraph({
+    Title = "Fling",
+    Desc = "Aktifkan toggle, equip tool dari Backpack, lalu klik sambil berjalan untuk memukul/menendang pemain lain",
+    Icon = "info",
+})
+
+FlingSection:Toggle({
+    Title = "PUNCH FLING (Tool)",
+    Desc = "Aktifkan tool punch di backpack - mendekati player lalu klik untuk fling",
+    Icon = "hand",
+    Value = false,
+    Callback = function(state)
+        punchActive = state
+        if state then
+            createPunchFling()
+            WindUI:Notify({ Title = "Punch Fling", Content = "Tool 'PiePunch' ada di Backpack!\nEquip dan klik player untuk fling.", Duration = 4, Icon = "hand" })
+        else
+            removePunchTool()
+            WindUI:Notify({ Title = "Punch Fling", Content = "Punch Fling dinonaktifkan.", Duration = 2, Icon = "x" })
+        end
+    end
+})
+
+FlingSection:Toggle({
+    Title = "DROP KICK FLING (Tool)",
+    Desc = "Aktifkan tool dropkick di backpack - mendekati player lalu klik untuk fling",
+    Icon = "footprints",
+    Value = false,
+    Callback = function(state)
+        kickActive = state
+        if state then
+            createKickFling()
+            WindUI:Notify({ Title = "Drop Kick Fling", Content = "Tool 'PieKick' ada di Backpack!\nEquip dan klik player untuk fling.", Duration = 4, Icon = "footprints" })
+        else
+            removeKickTool()
+            WindUI:Notify({ Title = "Drop Kick Fling", Content = "Drop Kick Fling dinonaktifkan.", Duration = 2, Icon = "x" })
+        end
+    end
+})
+
+FlingSection:Slider({
+    Title = "Fling Power",
+    Desc = "Kekuatan fling | Default: 50",
+    Icon = "zap",
+    Step = 5,
+    Value = { Min = 10, Max = 500, Default = 50 },
+    IsTooltip = true,
+    IsTextbox = true,
+    Callback = function(v) PunchPower = v end
+})
+
+FlingSection:Slider({
+    Title = "Fling Time",
+    Desc = "Durasi fling dalam frames | Default: 30",
+    Icon = "timer",
+    Step = 5,
+    Value = { Min = 5, Max = 120, Default = 30 },
+    IsTooltip = true,
+    IsTextbox = true,
+    Callback = function(v) PunchTime = v end
+})
+
+-- ============================================================
+-- TAB: ANIMATIONS
+-- ============================================================
 local TabAnimations = Window:Tab({ Title = "Animations", Icon = "person-standing" })
 
 local AnimationList = {
-    { Title = "adidas Sports",            Idle = 18537376492,      Idle2 = 18537371272,      Walk = 18537392113,      Run = 18537384940,      Jump = 18537380791,      Climb = 18537363391,      Fall = 18537367238,      Swim = 18537389531,      SwimIdle = 18537387180      },
-    { Title = "Astronaut",                Idle = 10921034824,      Idle2 = 10921036806,      Walk = 10921046031,      Run = 10921039308,      Jump = 10921042494,      Climb = 10921032124,      Fall = 10921040576,      Swim = 10921044000,      SwimIdle = 10921045006      },
-    { Title = "Bold by e.l.f.",           Idle = 16738333868,      Idle2 = 16738334710,      Walk = 16738340646,      Run = 16738337225,      Jump = 16738336650,      Climb = 16738332169,      Fall = 16738333171,      Swim = 16738339158,      SwimIdle = 16738339817      },
-    { Title = "Bubbly",                   Idle = 10921054344,      Idle2 = 10921055107,      Walk = 10980888364,      Run = 10921057244,      Jump = 10921062673,      Climb = 10921053544,      Fall = 10921061530,      Swim = 10921063569,      SwimIdle = 10922582160      },
-    { Title = "Cartoony",                 Idle = 10921071918,      Idle2 = 10921072875,      Walk = 10921082452,      Run = 10921076136,      Jump = 10921078135,      Climb = 10921070953,      Fall = 10921077030,      Swim = 10921079380,      SwimIdle = 10921081059      },
-    { Title = "Catwalk Glam by e.l.f.",   Idle = 133806214992291,  Idle2 = 94970088341563,   Walk = 109168724482748,  Run = 81024476153754,   Jump = 116936326516985,  Climb = 119377220967554,  Fall = 92294537340807,   Swim = 134591743181628,  SwimIdle = 98854111361360   },
-    { Title = "Confident",                Idle = 1069987858,       Idle2 = 1069977950,       Walk = 1070017263,       Run = 1070001516,       Jump = 1069984524,       Climb = 1069946257,       Fall = 1069973677,       Swim = 1070009914,       SwimIdle = 1070012133       },
-    { Title = "Cowboy",                   Idle = 1014398616,       Idle2 = 1014390418,       Walk = 1014421541,       Run = 1014401683,       Jump = 1014394726,       Climb = 1014380606,       Fall = 1014384571,       Swim = 1014406523,       SwimIdle = 1014411816       },
-    { Title = "Elder",                    Idle = 10921101664,      Idle2 = 10921102574,      Walk = 10921111375,      Run = 10921104374,      Jump = 10921107367,      Climb = 10921100400,      Fall = 10921105765,      Swim = 10921108971,      SwimIdle = 10921110146      },
-    { Title = "Knight",                   Idle = 10921117521,      Idle2 = 10921118894,      Walk = 10921127095,      Run = 10921121197,      Jump = 10921123517,      Climb = 10921116196,      Fall = 10921122579,      Swim = 10921125160,      SwimIdle = 10921125935      },
-    { Title = "Levitation",               Idle = 10921132962,      Idle2 = 10921133721,      Walk = 10921140719,      Run = 10921135644,      Jump = 10921137402,      Climb = 10921132092,      Fall = 10921136539,      Swim = 10921138209,      SwimIdle = 10921139478      },
-    { Title = "Mage",                     Idle = 10921144709,      Idle2 = 10921145797,      Walk = 10921152678,      Run = 10921148209,      Jump = 10921149743,      Climb = 10921143404,      Fall = 10921148939,      Swim = 10921150788,      SwimIdle = 10921151661      },
-    { Title = "NFL",                      Idle = 92080889861410,   Idle2 = 74451233229259,   Walk = 110358958299415,  Run = 117333533048078,  Jump = 119846112151352,  Climb = 134630013742019,  Fall = 129773241321032,  Swim = 132697394189921,  SwimIdle = 79090109939093   },
-    { Title = "Ninja",                    Idle = 10921155160,      Idle2 = 10921155867,      Walk = 10921162768,      Run = 10921157929,      Jump = 10921160088,      Climb = 10921154678,      Fall = 10921159222,      Swim = 10921161002,      SwimIdle = 10922757002      },
-    { Title = "No Boundaries by Walmart", Idle = 18747067405,      Idle2 = 18747063918,      Walk = 18747074203,      Run = 18747070484,      Jump = 18747069148,      Climb = 18747060903,      Fall = 18747062535,      Swim = 18747073181,      SwimIdle = 18747071682      },
-    { Title = "Oldschool",                Idle = 10921230744,      Idle2 = 10921232093,      Walk = 10921244891,      Run = 10921240218,      Jump = 10921242013,      Climb = 10921229866,      Fall = 10921241244,      Swim = 10921243048,      SwimIdle = 10921244018      },
-    { Title = "Patrol",                   Idle = 1150842221,       Idle2 = 1149612882,       Walk = 1151231493,       Run = 1150967949,       Jump = 1150944216,       Climb = 1148811837,       Fall = 1148863382,       Swim = 1151204998,       SwimIdle = 1151221899       },
-    { Title = "Pirate",                   Idle = 750781874,        Idle2 = 750782770,        Walk = 750785693,        Run = 750783738,        Jump = 750782230,        Climb = 750779899,        Fall = 750780242,        Swim = 750784579,        SwimIdle = 750785176        },
-    { Title = "Popstar",                  Idle = 1212954651,       Idle2 = 1212900985,       Walk = 1212980338,       Run = 1212980348,       Jump = 1212954642,       Climb = 1213044953,       Fall = 1212900995,       Swim = 1212852603,       SwimIdle = 1212998578       },
-    { Title = "Princess",                 Idle = 941013098,        Idle2 = 941003647,        Walk = 941028902,        Run = 941015281,        Jump = 941008832,        Climb = 940996062,        Fall = 941000007,        Swim = 941018893,        SwimIdle = 941025398        },
-    { Title = "Robot",                    Idle = 10921248039,      Idle2 = 10921248831,      Walk = 10921255446,      Run = 10921250460,      Jump = 10921252123,      Climb = 10921247141,      Fall = 10921251156,      Swim = 10921253142,      SwimIdle = 10921253767      },
-    { Title = "Rthro",                    Idle = 10921259953,      Idle2 = 10921258489,      Walk = 10921269718,      Run = 10921261968,      Jump = 10921263860,      Climb = 10921257536,      Fall = 10921262864,      Swim = 10921264784,      SwimIdle = 10921265698      },
-    { Title = "Sneaky",                   Idle = 1132477671,       Idle2 = 1132473842,       Walk = 1132510133,       Run = 1132494274,       Jump = 1132489853,       Climb = 1132461372,       Fall = 1132469004,       Swim = 1132500520,       SwimIdle = 1132506407       },
-    { Title = "Stylish",                  Idle = 10921272275,      Idle2 = 10921273958,      Walk = 10921283326,      Run = 10921276116,      Jump = 10921279832,      Climb = 10921271391,      Fall = 10921278648,      Swim = 10921281000,      SwimIdle = 10921281964      },
-    { Title = "Stylized Female",          Idle = 4708192150,       Idle2 = 4708191566,       Walk = 4708193840,       Run = 4708192705,       Jump = 4708188025,       Climb = 4708184253,       Fall = 4708186162,       Swim = 4708189360,       SwimIdle = 4708190607       },
-    { Title = "Superhero",                Idle = 10921288909,      Idle2 = 10921290167,      Walk = 10921298616,      Run = 10921291831,      Jump = 10921294559,      Climb = 10921286911,      Fall = 10921293373,      Swim = 10921295495,      SwimIdle = 10921297391      },
-    { Title = "Toy",                      Idle = 10921301576,      Idle2 = 10921302207,      Walk = 10921312010,      Run = 10921306285,      Jump = 10921308158,      Climb = 10921300839,      Fall = 10921307241,      Swim = 10921309319,      SwimIdle = 10921310341      },
-    { Title = "Vampire",                  Idle = 10921315373,      Idle2 = 10921316709,      Walk = 10921326949,      Run = 10921320299,      Jump = 10921322186,      Climb = 10921314188,      Fall = 10921321317,      Swim = 10921324408,      SwimIdle = 10921325443      },
-    { Title = "Werewolf",                 Idle = 10921330408,      Idle2 = 10921333667,      Walk = 10921342074,      Run = 10921336997,      Jump = 1083218792,       Climb = 10921329322,      Fall = 10921337907,      Swim = 10921340419,      SwimIdle = 10921341319      },
-    { Title = "Wicked Popular",           Idle = 118832222982049,  Idle2 = 76049494037641,   Walk = 92072849924640,   Run = 72301599441680,   Jump = 104325245285198,  Climb = 131326830509784,  Fall = 121152442762481,  Swim = 99384245425157,   SwimIdle = 113199415118199  },
-    { Title = "Zombie",                   Idle = 10921344533,      Idle2 = 10921345304,      Walk = 10921355261,      Run = 616163682,        Jump = 10921351278,      Climb = 10921343576,      Fall = 10921350320,      Swim = 10921352344,      SwimIdle = 10921353442      },
+    { Title = "Astronaut",       Idle = 10921034824,  Idle2 = 10921036806,  Walk = 10921046031,  Run = 10921039308,  Jump = 10921042494,  Climb = 10921032124,  Fall = 10921040576  },
+    { Title = "Bubbly",          Idle = 10921054344,  Idle2 = 10921055107,  Walk = 10980888364,  Run = 10921057244,  Jump = 10921062673,  Climb = 10921053544,  Fall = 10921061530  },
+    { Title = "Cartoony",        Idle = 10921071918,  Idle2 = 10921072875,  Walk = 10921082452,  Run = 10921076136,  Jump = 10921078135,  Climb = 10921070953,  Fall = 10921077030  },
+    { Title = "Confident",       Idle = 1069987858,   Idle2 = 1069977950,   Walk = 1070017263,   Run = 1070001516,   Jump = 1069984524,   Climb = 1069946257,   Fall = 1069973677   },
+    { Title = "Cowboy",          Idle = 1014398616,   Idle2 = 1014390418,   Walk = 1014421541,   Run = 1014401683,   Jump = 1014394726,   Climb = 1014380606,   Fall = 1014384571   },
+    { Title = "Elder",           Idle = 10921101664,  Idle2 = 10921102574,  Walk = 10921111375,  Run = 10921104374,  Jump = 10921107367,  Climb = 10921100400,  Fall = 10921105765  },
+    { Title = "Knight",          Idle = 10921117521,  Idle2 = 10921118894,  Walk = 10921127095,  Run = 10921121197,  Jump = 10921123517,  Climb = 10921116196,  Fall = 10921122579  },
+    { Title = "Levitation",      Idle = 10921132962,  Idle2 = 10921133721,  Walk = 10921140719,  Run = 10921135644,  Jump = 10921137402,  Climb = 10921132092,  Fall = 10921136539  },
+    { Title = "Mage",            Idle = 10921144709,  Idle2 = 10921145797,  Walk = 10921152678,  Run = 10921148209,  Jump = 10921149743,  Climb = 10921143404,  Fall = 10921148939  },
+    { Title = "Ninja",           Idle = 10921155160,  Idle2 = 10921155867,  Walk = 10921162768,  Run = 10921157929,  Jump = 10921160088,  Climb = 10921154678,  Fall = 10921159222  },
+    { Title = "Patrol",          Idle = 1150842221,   Idle2 = 1149612882,   Walk = 1151231493,   Run = 1150967949,   Jump = 1150944216,   Climb = 1148811837,   Fall = 1148863382   },
+    { Title = "Pirate",          Idle = 750781874,    Idle2 = 750782770,    Walk = 750785693,    Run = 750783738,    Jump = 750782230,    Climb = 750779899,    Fall = 750780242    },
+    { Title = "Popstar",         Idle = 1212954651,   Idle2 = 1212900985,   Walk = 1212980338,   Run = 1212980348,   Jump = 1212954642,   Climb = 1213044953,   Fall = 1212900995   },
+    { Title = "Princess",        Idle = 941013098,    Idle2 = 941003647,    Walk = 941028902,    Run = 941015281,    Jump = 941008832,    Climb = 940996062,    Fall = 941000007    },
+    { Title = "Robot",           Idle = 10921248039,  Idle2 = 10921248831,  Walk = 10921255446,  Run = 10921250460,  Jump = 10921252123,  Climb = 10921247141,  Fall = 10921251156  },
+    { Title = "Rthro",           Idle = 10921259953,  Idle2 = 10921258489,  Walk = 10921269718,  Run = 10921261968,  Jump = 10921263860,  Climb = 10921257536,  Fall = 10921262864  },
+    { Title = "Sneaky",          Idle = 1132477671,   Idle2 = 1132473842,   Walk = 1132510133,   Run = 1132494274,   Jump = 1132489853,   Climb = 1132461372,   Fall = 1132469004   },
+    { Title = "Stylish",         Idle = 10921272275,  Idle2 = 10921273958,  Walk = 10921283326,  Run = 10921276116,  Jump = 10921279832,  Climb = 10921271391,  Fall = 10921278648  },
+    { Title = "Stylized Female", Idle = 4708192150,   Idle2 = 4708191566,   Walk = 4708193840,   Run = 4708192705,   Jump = 4708188025,   Climb = 4708184253,   Fall = 4708186162   },
+    { Title = "Superhero",       Idle = 10921288909,  Idle2 = 10921290167,  Walk = 10921298616,  Run = 10921291831,  Jump = 10921294559,  Climb = 10921286911,  Fall = 10921293373  },
+    { Title = "Toy",             Idle = 10921301576,  Idle2 = 10921302207,  Walk = 10921312010,  Run = 10921306285,  Jump = 10921308158,  Climb = 10921300839,  Fall = 10921307241  },
+    { Title = "Vampire",         Idle = 10921315373,  Idle2 = 10921316709,  Walk = 10921326949,  Run = 10921320299,  Jump = 10921322186,  Climb = 10921314188,  Fall = 10921321317  },
+    { Title = "Zombie",          Idle = 10921344533,  Idle2 = 10921345304,  Walk = 10921355261,  Run = 616163682,    Jump = 10921351278,  Climb = 10921343576,  Fall = 10921350320  },
 }
 
 local FullEmoteList = {}
 
 local function loadVexroEmotes()
-    local ok, result = pcall(function()
+    pcall(function()
         local response = game:HttpGet("https://raw.githubusercontent.com/zyrovell/Vexro/main/emotes.json")
         local data = HttpService:JSONDecode(response)
         if type(data) == "table" then
@@ -506,12 +1051,11 @@ local function loadVexroEmotes()
             end
         end
     end)
-    if not ok or #FullEmoteList == 0 then
+    if #FullEmoteList == 0 then
         local fallback = {
             { Title = "Floss Dance", Id = 5917459365 }, { Title = "Fancy Feet", Id = 3333432454 },
-            { Title = "Fashion",     Id = 3333331310 }, { Title = "Shuffle",    Id = 4349242221 },
-            { Title = "Wave",        Id = 3576686446 }, { Title = "Dance",      Id = 3576720708 },
-            { Title = "Laugh",       Id = 3576777185 }, { Title = "Cheer",      Id = 3576738018 },
+            { Title = "Wave", Id = 3576686446 },        { Title = "Dance", Id = 3576720708 },
+            { Title = "Laugh", Id = 3576777185 },       { Title = "Cheer", Id = 3576738018 },
         }
         for _, v in ipairs(fallback) do table.insert(FullEmoteList, v) end
     end
@@ -625,14 +1169,6 @@ local function saveDefaultAnims()
             local a = Animate.fall:FindFirstChildOfClass("Animation")
             if a then defaultAnimIds.Fall = a.AnimationId end
         end
-        if Animate:FindFirstChild("swim") then
-            local a = Animate.swim:FindFirstChildOfClass("Animation")
-            if a then defaultAnimIds.Swim = a.AnimationId end
-        end
-        if Animate:FindFirstChild("swimidle") then
-            local a = Animate.swimidle:FindFirstChildOfClass("Animation")
-            if a then defaultAnimIds.SwimIdle = a.AnimationId end
-        end
     end)
 end
 
@@ -668,18 +1204,8 @@ local function applyAnimation(data)
             local a = Animate.fall:FindFirstChildOfClass("Animation")
             if a then a.AnimationId = URL_ANIM .. data.Fall end
         end
-        if data.Swim and Animate:FindFirstChild("swim") then
-            local a = Animate.swim:FindFirstChildOfClass("Animation")
-            if a then a.AnimationId = URL_ANIM .. data.Swim end
-        end
-        if data.SwimIdle and Animate:FindFirstChild("swimidle") then
-            local a = Animate.swimidle:FindFirstChildOfClass("Animation")
-            if a then a.AnimationId = URL_ANIM .. data.SwimIdle end
-        end
     end)
-    Animate.Disabled = true
-    task.wait(0.05)
-    Animate.Disabled = false
+    Animate.Disabled = true task.wait(0.05) Animate.Disabled = false
 end
 
 local function resetAnimation()
@@ -714,19 +1240,9 @@ local function resetAnimation()
                 local a = Animate.fall:FindFirstChildOfClass("Animation")
                 if a and defaultAnimIds.Fall then a.AnimationId = defaultAnimIds.Fall end
             end
-            if Animate:FindFirstChild("swim") then
-                local a = Animate.swim:FindFirstChildOfClass("Animation")
-                if a and defaultAnimIds.Swim then a.AnimationId = defaultAnimIds.Swim end
-            end
-            if Animate:FindFirstChild("swimidle") then
-                local a = Animate.swimidle:FindFirstChildOfClass("Animation")
-                if a and defaultAnimIds.SwimIdle then a.AnimationId = defaultAnimIds.SwimIdle end
-            end
         end)
     end
-    Animate.Disabled = true
-    task.wait(0.05)
-    Animate.Disabled = false
+    Animate.Disabled = true task.wait(0.05) Animate.Disabled = false
     defaultAnimIds = {}
 end
 
@@ -745,11 +1261,8 @@ local function playEmote(data, loopState)
             end)
             if ok and objects and #objects > 0 then
                 local item = objects[1]
-                if item:IsA("Animation") then
-                    animObj = item
-                else
-                    animObj = item:FindFirstChildWhichIsA("Animation", true)
-                end
+                if item:IsA("Animation") then animObj = item
+                else animObj = item:FindFirstChildWhichIsA("Animation", true) end
             end
             if not animObj then
                 animObj = Instance.new("Animation")
@@ -757,12 +1270,9 @@ local function playEmote(data, loopState)
             end
             _animObjCache[data.Id] = animObj
         end
-        local ok2, track = pcall(function()
-            return animator:LoadAnimation(animObj)
-        end)
+        local ok2, track = pcall(function() return animator:LoadAnimation(animObj) end)
         if not ok2 or not track then
-            WindUI:Notify({ Title = "Error", Content = "Gagal load emote!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Gagal load emote!", Duration = 2, Icon = "alert-circle" }) return
         end
         track.Priority = Enum.AnimationPriority.Action4
         track.Looped   = loopState
@@ -772,14 +1282,11 @@ local function playEmote(data, loopState)
         conn = RunService.Heartbeat:Connect(function()
             local hum = getHum()
             if not hum then
-                pcall(function() track:Stop(0.1) end)
-                conn:Disconnect()
-                return
+                pcall(function() track:Stop(0.1) end) conn:Disconnect() return
             end
             if hum.MoveDirection.Magnitude > 0 then
                 pcall(function() track:Stop(0.2) end)
-                currentEmoteTrack = nil
-                conn:Disconnect()
+                currentEmoteTrack = nil conn:Disconnect()
             end
         end)
         track.Stopped:Connect(function()
@@ -859,35 +1366,25 @@ local animNameList = {}
 for _, v in ipairs(AnimationList) do table.insert(animNameList, v.Title) end
 table.sort(animNameList, function(a, b) return a:lower() < b:lower() end)
 
--- ================================================================
--- Section: Animations
--- ================================================================
-
 local SectionAnim = TabAnimations:Section({ Title = "Animations", Icon = "person-standing", Opened = true })
 
 SectionAnim:Dropdown({
-    Title = "Daftar Animasi",
-    Desc = "Pilih animation pack karakter",
-    Values = animNameList,
-    Value = "",
-    SearchBarEnabled = true,
+    Title = "Daftar Animasi", Desc = "Pilih animation pack karakter",
+    Values = animNameList, Value = "", SearchBarEnabled = true,
     Callback = function(v) selectedAnimation = v end
 })
 
 local HStackAnimBtn = SectionAnim:HStack({ AutoSpace = true })
 
 HStackAnimBtn:Button({
-    Title = "Apply",
-    Icon = "check",
+    Title = "Apply", Icon = "check",
     Callback = function()
         if not selectedAnimation or selectedAnimation == "" then
-            WindUI:Notify({ Title = "Error", Content = "Pilih animasi dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih animasi dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         local data = getAnimData(selectedAnimation)
         if not data then
-            WindUI:Notify({ Title = "Error", Content = "Animasi tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Animasi tidak ditemukan!", Duration = 2, Icon = "alert-circle" }) return
         end
         applyAnimation(data)
         WindUI:Notify({ Title = "Animations", Content = "Animasi '" .. selectedAnimation .. "' diterapkan!", Duration = 2, Icon = "check" })
@@ -895,27 +1392,19 @@ HStackAnimBtn:Button({
 })
 
 HStackAnimBtn:Button({
-    Title = "Reset",
-    Icon = "refresh-cw",
+    Title = "Reset", Icon = "refresh-cw",
     Callback = function()
-        resetAnimation()
-        selectedAnimation = nil
+        resetAnimation() selectedAnimation = nil
         WindUI:Notify({ Title = "Animations", Content = "Animasi dikembalikan ke default.", Duration = 2, Icon = "refresh-cw" })
     end
 })
-
--- ================================================================
--- Section: Emote
--- ================================================================
 
 local SectionEmote = TabAnimations:Section({ Title = "Emote", Icon = "drama", Opened = true })
 
 local emoteSearchValue = ""
 SectionEmote:Input({
-    Title = "Search",
-    Desc = "Ketik nama emote",
-    Placeholder = "Contoh: Dance",
-    Value = "",
+    Title = "Search", Desc = "Ketik nama emote",
+    Placeholder = "Contoh: Dance", Value = "",
     Callback = function(v) emoteSearchValue = v end
 })
 
@@ -937,12 +1426,10 @@ end
 local HStackEmoteSearch = SectionEmote:HStack({ AutoSpace = true })
 
 HStackEmoteSearch:Button({
-    Title = "Search",
-    Icon = "search",
+    Title = "Search", Icon = "search",
     Callback = function()
         emoteSearchResults = getFilteredEmotes(emoteSearchValue)
-        emotePage = 1
-        refreshEmoteDropdown()
+        emotePage = 1 refreshEmoteDropdown()
         if #emoteSearchResults == 0 then
             WindUI:Notify({ Title = "Emote", Content = "Tidak ada emote '" .. emoteSearchValue .. "'", Duration = 2, Icon = "alert-circle" })
         else
@@ -952,13 +1439,9 @@ HStackEmoteSearch:Button({
 })
 
 HStackEmoteSearch:Button({
-    Title = "Reset Search",
-    Icon = "refresh-cw",
+    Title = "Reset Search", Icon = "refresh-cw",
     Callback = function()
-        emoteSearchValue = ""
-        emoteSearchResults = FullEmoteList
-        emotePage = 1
-        refreshEmoteDropdown()
+        emoteSearchValue = "" emoteSearchResults = FullEmoteList emotePage = 1 refreshEmoteDropdown()
         WindUI:Notify({ Title = "Emote", Content = "Menampilkan semua emote.", Duration = 2, Icon = "refresh-cw" })
     end
 })
@@ -972,38 +1455,32 @@ emotePageParagraph = SectionEmote:Paragraph({
 })
 
 emoteDropdown = SectionEmote:Dropdown({
-    Title = "Daftar Emote",
-    Desc = "Pilih emote untuk dimainkan",
-    Values = getEmotePage(FullEmoteList, 1),
-    Value = "",
+    Title = "Daftar Emote", Desc = "Pilih emote untuk dimainkan",
+    Values = getEmotePage(FullEmoteList, 1), Value = "",
     Callback = function(v) selectedEmote = v end
 })
 
 local HStackEmoteNav = SectionEmote:HStack({ AutoSpace = true })
 
 HStackEmoteNav:Button({
-    Title = "◀ Previous",
+    Title = "< Previous",
     Callback = function()
         if emotePage <= 1 then
-            WindUI:Notify({ Title = "Emote", Content = "Sudah di halaman pertama!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Emote", Content = "Sudah di halaman pertama!", Duration = 2, Icon = "alert-circle" }) return
         end
-        emotePage = emotePage - 1
-        refreshEmoteDropdown()
+        emotePage = emotePage - 1 refreshEmoteDropdown()
         WindUI:Notify({ Title = "Emote", Content = "Halaman " .. emotePage, Duration = 1, Icon = "chevron-left" })
     end
 })
 
 HStackEmoteNav:Button({
-    Title = "Next ▶",
+    Title = "Next >",
     Callback = function()
         local totalPages = getTotalEmotePages(emoteSearchResults)
         if emotePage >= totalPages then
-            WindUI:Notify({ Title = "Emote", Content = "Sudah di halaman terakhir!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Emote", Content = "Sudah di halaman terakhir!", Duration = 2, Icon = "alert-circle" }) return
         end
-        emotePage = emotePage + 1
-        refreshEmoteDropdown()
+        emotePage = emotePage + 1 refreshEmoteDropdown()
         WindUI:Notify({ Title = "Emote", Content = "Halaman " .. emotePage, Duration = 1, Icon = "chevron-right" })
     end
 })
@@ -1013,17 +1490,14 @@ SectionEmote:Divider()
 local HStackEmotePlay = SectionEmote:HStack({ AutoSpace = true })
 
 HStackEmotePlay:Button({
-    Title = "Apply",
-    Icon = "play",
+    Title = "Apply", Icon = "play",
     Callback = function()
         if not selectedEmote or selectedEmote == "" then
-            WindUI:Notify({ Title = "Error", Content = "Pilih emote dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih emote dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         local data = getEmoteData(selectedEmote)
         if not data then
-            WindUI:Notify({ Title = "Error", Content = "Emote tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Emote tidak ditemukan!", Duration = 2, Icon = "alert-circle" }) return
         end
         playEmote(data, emoteLoopEnabled)
         WindUI:Notify({ Title = "Emote", Content = "Memainkan '" .. selectedEmote .. "'", Duration = 2, Icon = "play" })
@@ -1031,8 +1505,7 @@ HStackEmotePlay:Button({
 })
 
 HStackEmotePlay:Button({
-    Title = "Stop",
-    Icon = "square",
+    Title = "Stop", Icon = "square",
     Callback = function()
         stopEmote()
         WindUI:Notify({ Title = "Emote", Content = "Emote dihentikan.", Duration = 2, Icon = "square" })
@@ -1040,37 +1513,24 @@ HStackEmotePlay:Button({
 })
 
 SectionEmote:Toggle({
-    Title = "Loop",
-    Desc = "Ulangi emote terus menerus",
-    Icon = "repeat",
-    Value = true,
+    Title = "Loop", Desc = "Ulangi emote terus menerus", Icon = "repeat", Value = true,
     Callback = function(state)
         emoteLoopEnabled = state
-        if currentEmoteTrack then
-            currentEmoteTrack.Looped = state
-        end
+        if currentEmoteTrack then currentEmoteTrack.Looped = state end
     end
 })
-
--- ================================================================
--- Section: Custom Emote
--- ================================================================
 
 local SectionMoreAnim = TabAnimations:Section({ Title = "Custom Emote", Icon = "plus-circle", Opened = true })
 
 SectionMoreAnim:Input({
-    Title = "Nama Emote",
-    Desc = "Nama untuk emote custom",
-    Placeholder = "Contoh: My Emote",
-    Value = "",
+    Title = "Nama Emote", Desc = "Nama untuk emote custom",
+    Placeholder = "Contoh: My Emote", Value = "",
     Callback = function(v) customEmoteNameValue = v end
 })
 
 SectionMoreAnim:Input({
-    Title = "Animation ID",
-    Desc = "Animation ID emote Roblox",
-    Placeholder = "Contoh: 507770818",
-    Value = "",
+    Title = "Animation ID", Desc = "Animation ID emote Roblox",
+    Placeholder = "Contoh: 507770818", Value = "",
     Callback = function(v) customEmoteAnimIdValue = v end
 })
 
@@ -1084,38 +1544,31 @@ local function buildCustomEmoteNames()
 end
 
 customEmoteDropdown = SectionMoreAnim:Dropdown({
-    Title = "Daftar Custom Emote",
-    Desc = "Emote custom tersimpan",
-    Values = buildCustomEmoteNames(),
-    Value = "",
+    Title = "Daftar Custom Emote", Desc = "Emote custom tersimpan",
+    Values = buildCustomEmoteNames(), Value = "",
     Callback = function(v) selectedCustomEmote = v end
 })
 
 local HStackCustomBtn = SectionMoreAnim:HStack({ AutoSpace = true })
 
 HStackCustomBtn:Button({
-    Title = "Save",
-    Icon = "save",
+    Title = "Save", Icon = "save",
     Callback = function()
         if customEmoteNameValue == "" then
-            WindUI:Notify({ Title = "Error", Content = "Masukkan nama emote dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Masukkan nama emote dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         local id = tonumber(customEmoteAnimIdValue)
         if not id then
-            WindUI:Notify({ Title = "Error", Content = "Animation ID harus berupa angka!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Animation ID harus berupa angka!", Duration = 2, Icon = "alert-circle" }) return
         end
         customEmotes[customEmoteNameValue] = id
-        saveCustomEmotes()
-        customEmoteDropdown:Refresh(buildCustomEmoteNames())
+        saveCustomEmotes() customEmoteDropdown:Refresh(buildCustomEmoteNames())
         WindUI:Notify({ Title = "Custom Emote", Content = "Emote '" .. customEmoteNameValue .. "' disimpan!", Duration = 2, Icon = "save" })
     end
 })
 
 HStackCustomBtn:Button({
-    Title = "Refresh",
-    Icon = "refresh-cw",
+    Title = "Refresh", Icon = "refresh-cw",
     Callback = function()
         customEmoteDropdown:Refresh(buildCustomEmoteNames())
         WindUI:Notify({ Title = "Custom Emote", Content = "Daftar diperbarui.", Duration = 2, Icon = "refresh-cw" })
@@ -1123,17 +1576,13 @@ HStackCustomBtn:Button({
 })
 
 HStackCustomBtn:Button({
-    Title = "Delete",
-    Icon = "trash",
+    Title = "Delete", Icon = "trash",
     Callback = function()
         if not selectedCustomEmote or not customEmotes[selectedCustomEmote] then
-            WindUI:Notify({ Title = "Error", Content = "Pilih emote custom dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih emote custom dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
-        customEmotes[selectedCustomEmote] = nil
-        selectedCustomEmote = nil
-        saveCustomEmotes()
-        customEmoteDropdown:Refresh(buildCustomEmoteNames())
+        customEmotes[selectedCustomEmote] = nil selectedCustomEmote = nil
+        saveCustomEmotes() customEmoteDropdown:Refresh(buildCustomEmoteNames())
         WindUI:Notify({ Title = "Custom Emote", Content = "Emote dihapus.", Duration = 2, Icon = "trash" })
     end
 })
@@ -1143,12 +1592,10 @@ SectionMoreAnim:Divider()
 local HStackCustomPlay = SectionMoreAnim:HStack({ AutoSpace = true })
 
 HStackCustomPlay:Button({
-    Title = "Apply",
-    Icon = "play",
+    Title = "Apply", Icon = "play",
     Callback = function()
         if not selectedCustomEmote or not customEmotes[selectedCustomEmote] then
-            WindUI:Notify({ Title = "Error", Content = "Pilih emote custom dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih emote custom dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         playEmote({ Title = selectedCustomEmote, Id = customEmotes[selectedCustomEmote] }, customEmoteLoopEnabled)
         WindUI:Notify({ Title = "Custom Emote", Content = "Memainkan '" .. selectedCustomEmote .. "'", Duration = 2, Icon = "play" })
@@ -1156,8 +1603,7 @@ HStackCustomPlay:Button({
 })
 
 HStackCustomPlay:Button({
-    Title = "Stop",
-    Icon = "square",
+    Title = "Stop", Icon = "square",
     Callback = function()
         stopEmote()
         WindUI:Notify({ Title = "Custom Emote", Content = "Emote dihentikan.", Duration = 2, Icon = "square" })
@@ -1165,22 +1611,16 @@ HStackCustomPlay:Button({
 })
 
 SectionMoreAnim:Toggle({
-    Title = "Loop",
-    Desc = "Ulangi custom emote terus menerus",
-    Icon = "repeat",
-    Value = true,
+    Title = "Loop", Desc = "Ulangi custom emote terus menerus", Icon = "repeat", Value = true,
     Callback = function(state)
         customEmoteLoopEnabled = state
-        if currentEmoteTrack then
-            currentEmoteTrack.Looped = state
-        end
+        if currentEmoteTrack then currentEmoteTrack.Looped = state end
     end
 })
 
--- ================================================================
--- Tab: Teleport
--- ================================================================
-
+-- ============================================================
+-- TAB: TELEPORT
+-- ============================================================
 local TabTeleport = Window:Tab({ Title = "Teleport", Icon = "map-pin" })
 
 local selectedPlayer = nil
@@ -1191,8 +1631,7 @@ local savedPlacesCount = 0
 local playerList     = {}
 
 local function getPlayerNames()
-    local names = {}
-    playerList = {}
+    local names = {} playerList = {}
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
             table.insert(names, p.DisplayName)
@@ -1222,8 +1661,7 @@ SectionTpPlayer:Button({
     Title = "Teleport ke Player", Desc = "Teleport ke player yang dipilih", Icon = "map-pin",
     Callback = function()
         if not selectedPlayer then
-            WindUI:Notify({ Title = "Error", Content = "Pilih player dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih player dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         local username = playerList[selectedPlayer]
         local target = Players:FindFirstChild(username)
@@ -1268,8 +1706,7 @@ SectionTpPlace:Button({
     Callback = function()
         local hrp = getHRP()
         if not hrp then
-            WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" }) return
         end
         savedPlacesCount = savedPlacesCount + 1
         local name = (placeNameInputValue ~= "" and placeNameInputValue) or ("Place " .. savedPlacesCount)
@@ -1289,8 +1726,7 @@ SectionTpPlace:Button({
             for i, k in ipairs(savedPlacesOrder) do
                 if k == selectedPlace then table.remove(savedPlacesOrder, i) break end
             end
-            placeDropdown:Refresh(getOrderedPlaceKeys())
-            selectedPlace = nil
+            placeDropdown:Refresh(getOrderedPlaceKeys()) selectedPlace = nil
             WindUI:Notify({ Title = "Delete", Content = "Tempat dihapus.", Duration = 2, Icon = "trash" })
         else
             WindUI:Notify({ Title = "Error", Content = "Pilih tempat dulu!", Duration = 2, Icon = "alert-circle" })
@@ -1310,8 +1746,7 @@ SectionTpPlace:Button({
     Title = "Teleport ke Place", Desc = "Teleport ke tempat yang dipilih", Icon = "map-pin",
     Callback = function()
         if not selectedPlace or not savedPlaces[selectedPlace] then
-            WindUI:Notify({ Title = "Error", Content = "Pilih tempat dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih tempat dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         local hrp = getHRP()
         if hrp then
@@ -1323,16 +1758,12 @@ SectionTpPlace:Button({
     end
 })
 
--- ================================================================
--- Tab: Visuals
--- ================================================================
-
+-- ============================================================
+-- TAB: VISUALS
+-- ============================================================
 local TabVisuals = Window:Tab({ Title = "Visuals", Icon = "eye" })
 
-local espSettings = {
-    Enabled = false, Box = false, Name = false, Health = false,
-    Distance = false, Tracer = false, Highlight = false,
-}
+local espSettings = { Enabled = false, Box = false, Name = false, Health = false, Distance = false, Tracer = false, Highlight = false }
 local espObjects = {}
 local camera = workspace.CurrentCamera
 
@@ -1357,18 +1788,17 @@ end
 local function createESPFor(p)
     if p == LocalPlayer then return end
     removeESPFor(p.Name)
-    local drawings = {}
-    local box = {}
+    local drawings = {} local box = {}
     for i = 1, 4 do
         box[i] = newDrawing("Line", { Color = Color3.fromRGB(255,50,50), Thickness = 1.5, Visible = false, ZIndex = 2 })
         table.insert(drawings, box[i])
     end
-    local nameText  = newDrawing("Text", { Color = Color3.fromRGB(255,255,255), Size = 13, Center = true, Outline = true, OutlineColor = Color3.fromRGB(0,0,0), Visible = false, ZIndex = 3 })
-    local distText  = newDrawing("Text", { Color = Color3.fromRGB(200,200,200), Size = 12, Center = true, Outline = true, OutlineColor = Color3.fromRGB(0,0,0), Visible = false, ZIndex = 3 })
-    local healthBg  = newDrawing("Line", { Color = Color3.fromRGB(0,0,0), Thickness = 4, Visible = false, ZIndex = 3 })
-    local healthBar = newDrawing("Line", { Color = Color3.fromRGB(0,255,0), Thickness = 3, Visible = false, ZIndex = 4 })
-    local healthText= newDrawing("Text", { Color = Color3.fromRGB(255,255,255), Size = 11, Center = true, Outline = true, OutlineColor = Color3.fromRGB(0,0,0), Visible = false, ZIndex = 5 })
-    local tracer    = newDrawing("Line", { Color = Color3.fromRGB(255,50,50), Thickness = 1, Visible = false, ZIndex = 1 })
+    local nameText   = newDrawing("Text", { Color = Color3.fromRGB(255,255,255), Size = 13, Center = true, Outline = true, OutlineColor = Color3.fromRGB(0,0,0), Visible = false, ZIndex = 3 })
+    local distText   = newDrawing("Text", { Color = Color3.fromRGB(200,200,200), Size = 12, Center = true, Outline = true, OutlineColor = Color3.fromRGB(0,0,0), Visible = false, ZIndex = 3 })
+    local healthBg   = newDrawing("Line", { Color = Color3.fromRGB(0,0,0), Thickness = 4, Visible = false, ZIndex = 3 })
+    local healthBar  = newDrawing("Line", { Color = Color3.fromRGB(0,255,0), Thickness = 3, Visible = false, ZIndex = 4 })
+    local healthText = newDrawing("Text", { Color = Color3.fromRGB(255,255,255), Size = 11, Center = true, Outline = true, OutlineColor = Color3.fromRGB(0,0,0), Visible = false, ZIndex = 5 })
+    local tracer     = newDrawing("Line", { Color = Color3.fromRGB(255,50,50), Thickness = 1, Visible = false, ZIndex = 1 })
     for _, d in ipairs({nameText,distText,healthBg,healthBar,healthText,tracer}) do table.insert(drawings, d) end
     espObjects[p.Name] = {
         drawings = drawings, box = box,
@@ -1388,9 +1818,7 @@ local function updateESPHighlight(p, enable)
                 local hl = Instance.new("Highlight", chr)
                 hl.FillColor = Color3.fromRGB(255,50,50)
                 hl.OutlineColor = Color3.fromRGB(255,255,255)
-                hl.FillTransparency = 0.6
-                hl.OutlineTransparency = 0
-                e.highlight = hl
+                hl.FillTransparency = 0.6 hl.OutlineTransparency = 0 e.highlight = hl
             end
         end
     else
@@ -1400,9 +1828,7 @@ end
 
 RunService.RenderStepped:Connect(function()
     if not espSettings.Enabled then
-        for _, e in pairs(espObjects) do
-            for _, d in pairs(e.drawings or {}) do d.Visible = false end
-        end
+        for _, e in pairs(espObjects) do for _, d in pairs(e.drawings or {}) do d.Visible = false end end
         return
     end
     local vpSize = camera.ViewportSize
@@ -1413,49 +1839,40 @@ RunService.RenderStepped:Connect(function()
         local chr = p.Character
         local hrp = chr and chr:FindFirstChild("HumanoidRootPart")
         local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-        if not hrp or not hum then
-            for _, d in pairs(e.drawings) do d.Visible = false end
-            continue
-        end
-        local headPos = hrp.Position + Vector3.new(0,3,0)
-        local feetPos = hrp.Position - Vector3.new(0,3,0)
-        local headScreen, headVis = camera:WorldToViewportPoint(headPos)
-        local feetScreen, feetVis = camera:WorldToViewportPoint(feetPos)
-        if not headVis or not feetVis then
-            for _, d in pairs(e.drawings) do d.Visible = false end
-            continue
-        end
+        if not hrp or not hum then for _, d in pairs(e.drawings) do d.Visible = false end continue end
+        local headScreen, headVis = camera:WorldToViewportPoint(hrp.Position + Vector3.new(0,3,0))
+        local feetScreen, feetVis = camera:WorldToViewportPoint(hrp.Position - Vector3.new(0,3,0))
+        if not headVis or not feetVis then for _, d in pairs(e.drawings) do d.Visible = false end continue end
         local h = math.abs(headScreen.Y - feetScreen.Y)
         local w = h * 0.5
         local cx = (headScreen.X + feetScreen.X) / 2
         local top = math.min(headScreen.Y, feetScreen.Y)
         local bot = math.max(headScreen.Y, feetScreen.Y)
-        local left = cx - w/2
-        local right = cx + w/2
-        e.box[1].From=Vector2.new(left,top)   e.box[1].To=Vector2.new(right,top) e.box[1].Visible=espSettings.Box
-        e.box[2].From=Vector2.new(left,bot)   e.box[2].To=Vector2.new(right,bot) e.box[2].Visible=espSettings.Box
-        e.box[3].From=Vector2.new(left,top)   e.box[3].To=Vector2.new(left,bot)  e.box[3].Visible=espSettings.Box
-        e.box[4].From=Vector2.new(right,top)  e.box[4].To=Vector2.new(right,bot) e.box[4].Visible=espSettings.Box
-        e.nameText.Position=Vector2.new(cx,top-15) e.nameText.Text=p.DisplayName e.nameText.Visible=espSettings.Name
+        local left = cx - w/2 local right = cx + w/2
+        e.box[1].From = Vector2.new(left,top)  e.box[1].To = Vector2.new(right,top) e.box[1].Visible = espSettings.Box
+        e.box[2].From = Vector2.new(left,bot)  e.box[2].To = Vector2.new(right,bot) e.box[2].Visible = espSettings.Box
+        e.box[3].From = Vector2.new(left,top)  e.box[3].To = Vector2.new(left,bot)  e.box[3].Visible = espSettings.Box
+        e.box[4].From = Vector2.new(right,top) e.box[4].To = Vector2.new(right,bot) e.box[4].Visible = espSettings.Box
+        e.nameText.Position = Vector2.new(cx, top-15) e.nameText.Text = p.DisplayName e.nameText.Visible = espSettings.Name
         local myHRP = getHRP()
-        local dist = myHRP and math.floor((hrp.Position-myHRP.Position).Magnitude) or 0
-        e.distText.Position=Vector2.new(cx,bot+3) e.distText.Text=dist.."m" e.distText.Visible=espSettings.Distance
-        local hpRatio = math.clamp(hum.Health/math.max(hum.MaxHealth,1),0,1)
-        local barX = left-6
-        local barFillBot = bot-((bot-top)*hpRatio)
-        e.healthBg.From=Vector2.new(barX,top)       e.healthBg.To=Vector2.new(barX,bot)       e.healthBg.Visible=espSettings.Health
-        e.healthBar.Color=Color3.fromRGB(math.floor(255*(1-hpRatio)),math.floor(255*hpRatio),0)
-        e.healthBar.From=Vector2.new(barX,barFillBot) e.healthBar.To=Vector2.new(barX,bot)    e.healthBar.Visible=espSettings.Health
-        e.healthText.Position=Vector2.new(barX-8,(top+bot)/2-5) e.healthText.Text=math.floor(hpRatio*100).."%"  e.healthText.Visible=espSettings.Health
-        e.tracer.From=Vector2.new(vpSize.X/2,vpSize.Y) e.tracer.To=Vector2.new(cx,bot) e.tracer.Visible=espSettings.Tracer
-        updateESPHighlight(p,espSettings.Highlight)
+        local dist = myHRP and math.floor((hrp.Position - myHRP.Position).Magnitude) or 0
+        e.distText.Position = Vector2.new(cx, bot+3) e.distText.Text = dist .. "m" e.distText.Visible = espSettings.Distance
+        local hpRatio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+        local barX = left - 6
+        local barFillBot = bot - ((bot - top) * hpRatio)
+        e.healthBg.From = Vector2.new(barX, top)        e.healthBg.To = Vector2.new(barX, bot)       e.healthBg.Visible = espSettings.Health
+        e.healthBar.Color = Color3.fromRGB(math.floor(255*(1-hpRatio)), math.floor(255*hpRatio), 0)
+        e.healthBar.From = Vector2.new(barX, barFillBot) e.healthBar.To = Vector2.new(barX, bot)      e.healthBar.Visible = espSettings.Health
+        e.healthText.Position = Vector2.new(barX-8, (top+bot)/2-5) e.healthText.Text = math.floor(hpRatio*100) .. "%" e.healthText.Visible = espSettings.Health
+        e.tracer.From = Vector2.new(vpSize.X/2, vpSize.Y) e.tracer.To = Vector2.new(cx, bot) e.tracer.Visible = espSettings.Tracer
+        updateESPHighlight(p, espSettings.Highlight)
     end
 end)
 
 Players.PlayerAdded:Connect(function(p)
     if espSettings.Enabled then createESPFor(p) end
     p.CharacterAdded:Connect(function()
-        if espSettings.Enabled then task.wait(1) updateESPHighlight(p,espSettings.Highlight) end
+        if espSettings.Enabled then task.wait(1) updateESPHighlight(p, espSettings.Highlight) end
     end)
 end)
 Players.PlayerRemoving:Connect(function(p) removeESPFor(p.Name) end)
@@ -1464,29 +1881,28 @@ local function refreshAllESP()
     clearAllESP()
     if espSettings.Enabled then
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then createESPFor(p) updateESPHighlight(p,espSettings.Highlight) end
+            if p ~= LocalPlayer then createESPFor(p) updateESPHighlight(p, espSettings.Highlight) end
         end
     end
 end
 
 local SectionESP = TabVisuals:Section({ Title = "ESP", Icon = "scan", Opened = true })
-SectionESP:Toggle({ Title = "ESP",           Desc = "Enable / Disable semua ESP",       Icon = "scan",        Value = false, Callback = function(v) espSettings.Enabled=v refreshAllESP() end })
-SectionESP:Toggle({ Title = "ESP Box",       Desc = "Kotak di sekitar player",           Icon = "square",      Value = false, Callback = function(v) espSettings.Box=v end })
-SectionESP:Toggle({ Title = "ESP Name",      Desc = "Tampilkan nama player",             Icon = "user",        Value = false, Callback = function(v) espSettings.Name=v end })
-SectionESP:Toggle({ Title = "ESP Health",    Desc = "Tampilkan health bar player",       Icon = "heart",       Value = false, Callback = function(v) espSettings.Health=v end })
-SectionESP:Toggle({ Title = "ESP Distance",  Desc = "Tampilkan jarak ke player",         Icon = "ruler",       Value = false, Callback = function(v) espSettings.Distance=v end })
-SectionESP:Toggle({ Title = "ESP Tracer",    Desc = "Garis dari bawah layar ke player",  Icon = "navigation",  Value = false, Callback = function(v) espSettings.Tracer=v end })
+SectionESP:Toggle({ Title = "ESP",           Desc = "Enable / Disable semua ESP",       Icon = "scan",        Value = false, Callback = function(v) espSettings.Enabled = v refreshAllESP() end })
+SectionESP:Toggle({ Title = "ESP Box",       Desc = "Kotak di sekitar player",           Icon = "square",      Value = false, Callback = function(v) espSettings.Box = v end })
+SectionESP:Toggle({ Title = "ESP Name",      Desc = "Tampilkan nama player",             Icon = "user",        Value = false, Callback = function(v) espSettings.Name = v end })
+SectionESP:Toggle({ Title = "ESP Health",    Desc = "Tampilkan health bar player",       Icon = "heart",       Value = false, Callback = function(v) espSettings.Health = v end })
+SectionESP:Toggle({ Title = "ESP Distance",  Desc = "Tampilkan jarak ke player",         Icon = "ruler",       Value = false, Callback = function(v) espSettings.Distance = v end })
+SectionESP:Toggle({ Title = "ESP Tracer",    Desc = "Garis dari bawah layar ke player",  Icon = "navigation",  Value = false, Callback = function(v) espSettings.Tracer = v end })
 SectionESP:Toggle({ Title = "ESP Highlight", Desc = "Highlight karakter player",         Icon = "highlighter", Value = false, Callback = function(v)
-    espSettings.Highlight=v
+    espSettings.Highlight = v
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then updateESPHighlight(p,v) end
+        if p ~= LocalPlayer then updateESPHighlight(p, v) end
     end
 end })
 
 local SectionVisualMore = TabVisuals:Section({ Title = "World", Icon = "globe", Opened = true })
 
 local freecamEnabled = false
-local freecamSpeed = 20
 
 SectionVisualMore:Toggle({
     Title = "Freecam", Desc = "Kamera bebas terbang", Icon = "video", Value = false,
@@ -1496,17 +1912,16 @@ SectionVisualMore:Toggle({
         if state then
             cam.CameraType = Enum.CameraType.Scriptable
             task.spawn(function()
-                local UIS = game:GetService("UserInputService")
                 while freecamEnabled do
                     RunService.RenderStepped:Wait()
                     local moveVec = Vector3.zero
-                    if UIS:IsKeyDown(Enum.KeyCode.W) then moveVec = moveVec + cam.CFrame.LookVector end
-                    if UIS:IsKeyDown(Enum.KeyCode.S) then moveVec = moveVec - cam.CFrame.LookVector end
-                    if UIS:IsKeyDown(Enum.KeyCode.A) then moveVec = moveVec - cam.CFrame.RightVector end
-                    if UIS:IsKeyDown(Enum.KeyCode.D) then moveVec = moveVec + cam.CFrame.RightVector end
-                    if UIS:IsKeyDown(Enum.KeyCode.E) then moveVec = moveVec + Vector3.new(0,1,0) end
-                    if UIS:IsKeyDown(Enum.KeyCode.Q) then moveVec = moveVec - Vector3.new(0,1,0) end
-                    if moveVec.Magnitude > 0 then cam.CFrame = cam.CFrame + moveVec.Unit * freecamSpeed * 0.016 end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVec = moveVec + cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVec = moveVec - cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVec = moveVec - cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVec = moveVec + cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveVec = moveVec + Vector3.new(0,1,0) end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveVec = moveVec - Vector3.new(0,1,0) end
+                    if moveVec.Magnitude > 0 then cam.CFrame = cam.CFrame + moveVec.Unit * 20 * 0.016 end
                 end
                 cam.CameraType = Enum.CameraType.Custom
             end)
@@ -1521,11 +1936,11 @@ SectionVisualMore:Toggle({
     Callback = function(state)
         local lighting = game:GetService("Lighting")
         if state then
-            lighting.Brightness=2 lighting.ClockTime=14 lighting.FogEnd=100000
-            lighting.GlobalShadows=false lighting.Ambient=Color3.fromRGB(255,255,255)
+            lighting.Brightness = 2 lighting.ClockTime = 14 lighting.FogEnd = 100000
+            lighting.GlobalShadows = false lighting.Ambient = Color3.fromRGB(255, 255, 255)
         else
-            lighting.Brightness=1 lighting.ClockTime=14 lighting.FogEnd=100000
-            lighting.GlobalShadows=true lighting.Ambient=Color3.fromRGB(127,127,127)
+            lighting.Brightness = 1 lighting.ClockTime = 14 lighting.FogEnd = 100000
+            lighting.GlobalShadows = true lighting.Ambient = Color3.fromRGB(127, 127, 127)
         end
     end
 })
@@ -1534,8 +1949,8 @@ SectionVisualMore:Toggle({
     Title = "No Fog", Desc = "Hilangkan fog", Icon = "cloud-off", Value = false,
     Callback = function(state)
         local lighting = game:GetService("Lighting")
-        if state then lighting.FogEnd=100000 lighting.FogStart=100000
-        else lighting.FogEnd=100000 lighting.FogStart=0 end
+        if state then lighting.FogEnd = 100000 lighting.FogStart = 100000
+        else lighting.FogEnd = 100000 lighting.FogStart = 0 end
     end
 })
 
@@ -1559,19 +1974,17 @@ SectionVisualMore:Toggle({
     end
 })
 
-local crosshairEnabled = false
 local crosshairLines = {}
 
 local function createCrosshair()
     local vpSize = workspace.CurrentCamera.ViewportSize
-    local cx = vpSize.X/2 local cy = vpSize.Y/2
-    local size=10 local gap=4 local thickness=2
-    local color=Color3.fromRGB(255,255,255)
-    crosshairLines[1]=Drawing.new("Line") crosshairLines[1].From=Vector2.new(cx,cy-gap-size) crosshairLines[1].To=Vector2.new(cx,cy-gap) crosshairLines[1].Color=color crosshairLines[1].Thickness=thickness crosshairLines[1].Visible=true
-    crosshairLines[2]=Drawing.new("Line") crosshairLines[2].From=Vector2.new(cx,cy+gap) crosshairLines[2].To=Vector2.new(cx,cy+gap+size) crosshairLines[2].Color=color crosshairLines[2].Thickness=thickness crosshairLines[2].Visible=true
-    crosshairLines[3]=Drawing.new("Line") crosshairLines[3].From=Vector2.new(cx-gap-size,cy) crosshairLines[3].To=Vector2.new(cx-gap,cy) crosshairLines[3].Color=color crosshairLines[3].Thickness=thickness crosshairLines[3].Visible=true
-    crosshairLines[4]=Drawing.new("Line") crosshairLines[4].From=Vector2.new(cx+gap,cy) crosshairLines[4].To=Vector2.new(cx+gap+size,cy) crosshairLines[4].Color=color crosshairLines[4].Thickness=thickness crosshairLines[4].Visible=true
-    crosshairLines[5]=Drawing.new("Line") crosshairLines[5].From=Vector2.new(cx-1,cy) crosshairLines[5].To=Vector2.new(cx+1,cy) crosshairLines[5].Color=Color3.fromRGB(255,50,50) crosshairLines[5].Thickness=2 crosshairLines[5].Visible=true
+    local cx = vpSize.X / 2 local cy = vpSize.Y / 2
+    local size = 10 local gap = 4 local thickness = 2 local color = Color3.fromRGB(255, 255, 255)
+    crosshairLines[1] = Drawing.new("Line") crosshairLines[1].From = Vector2.new(cx, cy-gap-size) crosshairLines[1].To = Vector2.new(cx, cy-gap) crosshairLines[1].Color = color crosshairLines[1].Thickness = thickness crosshairLines[1].Visible = true
+    crosshairLines[2] = Drawing.new("Line") crosshairLines[2].From = Vector2.new(cx, cy+gap) crosshairLines[2].To = Vector2.new(cx, cy+gap+size) crosshairLines[2].Color = color crosshairLines[2].Thickness = thickness crosshairLines[2].Visible = true
+    crosshairLines[3] = Drawing.new("Line") crosshairLines[3].From = Vector2.new(cx-gap-size, cy) crosshairLines[3].To = Vector2.new(cx-gap, cy) crosshairLines[3].Color = color crosshairLines[3].Thickness = thickness crosshairLines[3].Visible = true
+    crosshairLines[4] = Drawing.new("Line") crosshairLines[4].From = Vector2.new(cx+gap, cy) crosshairLines[4].To = Vector2.new(cx+gap+size, cy) crosshairLines[4].Color = color crosshairLines[4].Thickness = thickness crosshairLines[4].Visible = true
+    crosshairLines[5] = Drawing.new("Line") crosshairLines[5].From = Vector2.new(cx-1, cy) crosshairLines[5].To = Vector2.new(cx+1, cy) crosshairLines[5].Color = Color3.fromRGB(255, 50, 50) crosshairLines[5].Thickness = 2 crosshairLines[5].Visible = true
 end
 
 local function removeCrosshair()
@@ -1582,15 +1995,13 @@ end
 SectionVisualMore:Toggle({
     Title = "Crosshair", Desc = "Tampilkan crosshair di tengah layar", Icon = "crosshair", Value = false,
     Callback = function(state)
-        crosshairEnabled = state
         if state then createCrosshair() else removeCrosshair() end
     end
 })
 
--- ================================================================
--- Tab: Server
--- ================================================================
-
+-- ============================================================
+-- TAB: SERVER
+-- ============================================================
 local TabServer = Window:Tab({ Title = "Server", Icon = "server" })
 local antiAfkConn = nil
 
@@ -1640,17 +2051,16 @@ SectionServerActions:Button({
 SectionServerActions:Button({
     Title = "Server Hop", Desc = "Pindah ke server lain", Icon = "shuffle",
     Callback = function()
-        local placeId = game.PlaceId
-        local servers = {}
+        local placeId = game.PlaceId local servers = {}
         local success = pcall(function()
-            local url = "https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Asc&limit=100"
+            local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
             local res = HttpService:JSONDecode(game:HttpGet(url))
             for _, s in pairs(res.data) do
                 if s.playing < s.maxPlayers then table.insert(servers, s.id) end
             end
         end)
         if success and #servers > 0 then
-            TeleportService:TeleportToPlaceInstance(placeId, servers[math.random(1,#servers)], LocalPlayer)
+            TeleportService:TeleportToPlaceInstance(placeId, servers[math.random(1, #servers)], LocalPlayer)
         else
             WindUI:Notify({ Title = "Server Hop", Content = "Tidak ada server lain ditemukan.", Duration = 3, Icon = "alert-circle" })
         end
@@ -1664,8 +2074,7 @@ SectionServerActions:Button({
         for _, friend in ipairs(LocalPlayer:GetFriendsOnline()) do
             if friend.IsOnline and friend.PlaceId == game.PlaceId then
                 pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, friend.GameId, LocalPlayer) end)
-                found = true
-                break
+                found = true break
             end
         end
         if not found then
@@ -1674,17 +2083,13 @@ SectionServerActions:Button({
     end
 })
 
--- ================================================================
--- Tab: DevTools
--- ================================================================
-
+-- ============================================================
+-- TAB: DEVTOOLS
+-- ============================================================
 local TabDevTools = Window:Tab({ Title = "DevTools", Icon = "code" })
 
-local savedCoords = {}
-local savedCoordsOrder = {}
-local savedCoordsCount = 0
-local selectedCoord = nil
-local coordNameValue = ""
+local savedCoords = {} local savedCoordsOrder = {} local savedCoordsCount = 0
+local selectedCoord = nil local coordNameValue = ""
 
 local function buildCoordCode()
     if #savedCoordsOrder == 0 then return "-- Belum ada koordinat tersimpan" end
@@ -1712,11 +2117,8 @@ end
 local SectionCoords = TabDevTools:Section({ Title = "Koordinat", Icon = "map-pin", Opened = true })
 
 local coordCodeBlock = SectionCoords:Code({
-    Title = "Koordinat Tersimpan",
-    Code = "-- Belum ada koordinat tersimpan",
-    OnCopy = function()
-        WindUI:Notify({ Title = "DevTools", Content = "Kode disalin!", Duration = 2, Icon = "copy" })
-    end
+    Title = "Koordinat Tersimpan", Code = "-- Belum ada koordinat tersimpan",
+    OnCopy = function() WindUI:Notify({ Title = "DevTools", Content = "Kode disalin!", Duration = 2, Icon = "copy" }) end
 })
 
 local coordDropdown = SectionCoords:Dropdown({
@@ -1736,8 +2138,7 @@ local function refreshCoordDropdown()
     for _, k in ipairs(savedCoordsOrder) do
         if savedCoords[k] then table.insert(keys, k) end
     end
-    coordDropdown:Refresh(keys)
-    coordCodeBlock:SetCode(buildCoordCode())
+    coordDropdown:Refresh(keys) coordCodeBlock:SetCode(buildCoordCode())
 end
 
 SectionCoords:Button({
@@ -1745,16 +2146,15 @@ SectionCoords:Button({
     Callback = function()
         local hrp = getHRP()
         if not hrp then
-            WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Karakter tidak ditemukan!", Duration = 2, Icon = "alert-circle" }) return
         end
         savedCoordsCount = savedCoordsCount + 1
-        local name = (coordNameValue ~= "" and coordNameValue) or ("checkpoint"..savedCoordsCount)
-        if savedCoords[name] then name = name.." ("..savedCoordsCount..")" end
+        local name = (coordNameValue ~= "" and coordNameValue) or ("checkpoint" .. savedCoordsCount)
+        if savedCoords[name] then name = name .. " (" .. savedCoordsCount .. ")" end
         savedCoords[name] = hrp.CFrame
         table.insert(savedCoordsOrder, name)
         refreshCoordDropdown()
-        WindUI:Notify({ Title = "DevTools", Content = "Koordinat '"..name.."' disimpan!", Duration = 2, Icon = "save" })
+        WindUI:Notify({ Title = "DevTools", Content = "Koordinat '" .. name .. "' disimpan!", Duration = 2, Icon = "save" })
     end
 })
 
@@ -1770,15 +2170,13 @@ SectionCoords:Button({
     Title = "Delete Koordinat", Desc = "Hapus koordinat yang dipilih", Icon = "trash",
     Callback = function()
         if not selectedCoord or not savedCoords[selectedCoord] then
-            WindUI:Notify({ Title = "Error", Content = "Pilih koordinat dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih koordinat dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         savedCoords[selectedCoord] = nil
         for i, k in ipairs(savedCoordsOrder) do
             if k == selectedCoord then table.remove(savedCoordsOrder, i) break end
         end
-        selectedCoord = nil
-        refreshCoordDropdown()
+        selectedCoord = nil refreshCoordDropdown()
         WindUI:Notify({ Title = "DevTools", Content = "Koordinat dihapus.", Duration = 2, Icon = "trash" })
     end
 })
@@ -1795,15 +2193,13 @@ SectionDevMore:Button({
     end
 })
 
--- ================================================================
--- Tab: Config
--- ================================================================
-
+-- ============================================================
+-- TAB: CONFIG
+-- ============================================================
 local TabConfig = Window:Tab({ Title = "Config", Icon = "settings" })
 
 local ConfigManager = Window.ConfigManager
-local configInputValue = ""
-local selectedConfig = nil
+local configInputValue = "" local selectedConfig = nil
 
 local SectionConfigSave = TabConfig:Section({ Title = "Save & Load", Icon = "save", Opened = true })
 
@@ -1814,8 +2210,7 @@ SectionConfigSave:Input({
 })
 
 local function getConfigNames()
-    local all = ConfigManager:AllConfigs()
-    local names = {}
+    local all = ConfigManager:AllConfigs() local names = {}
     for _, v in ipairs(all) do table.insert(names, v) end
     return names
 end
@@ -1831,9 +2226,8 @@ SectionConfigSave:Button({
     Callback = function()
         local name = configInputValue ~= "" and configInputValue or "default"
         local cfg = ConfigManager:GetConfig(name) or ConfigManager:CreateConfig(name)
-        cfg:Save()
-        configDropdown:Refresh(getConfigNames())
-        WindUI:Notify({ Title = "Config", Content = "Config '"..name.."' disimpan!", Duration = 2, Icon = "save" })
+        cfg:Save() configDropdown:Refresh(getConfigNames())
+        WindUI:Notify({ Title = "Config", Content = "Config '" .. name .. "' disimpan!", Duration = 2, Icon = "save" })
     end
 })
 
@@ -1841,13 +2235,12 @@ SectionConfigSave:Button({
     Title = "Apply Config", Desc = "Terapkan config yang dipilih", Icon = "check",
     Callback = function()
         if not selectedConfig then
-            WindUI:Notify({ Title = "Error", Content = "Pilih config dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih config dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
         local cfg = ConfigManager:GetConfig(selectedConfig)
         if cfg then
             cfg:Load()
-            WindUI:Notify({ Title = "Config", Content = "Config '"..selectedConfig.."' diterapkan!", Duration = 2, Icon = "check" })
+            WindUI:Notify({ Title = "Config", Content = "Config '" .. selectedConfig .. "' diterapkan!", Duration = 2, Icon = "check" })
         else
             WindUI:Notify({ Title = "Error", Content = "Config tidak ditemukan!", Duration = 2, Icon = "alert-circle" })
         end
@@ -1866,20 +2259,17 @@ SectionConfigSave:Button({
     Title = "Delete Config", Desc = "Hapus config yang dipilih", Icon = "trash",
     Callback = function()
         if not selectedConfig then
-            WindUI:Notify({ Title = "Error", Content = "Pilih config dulu!", Duration = 2, Icon = "alert-circle" })
-            return
+            WindUI:Notify({ Title = "Error", Content = "Pilih config dulu!", Duration = 2, Icon = "alert-circle" }) return
         end
-        ConfigManager:DeleteConfig(selectedConfig)
-        selectedConfig = nil
+        ConfigManager:DeleteConfig(selectedConfig) selectedConfig = nil
         configDropdown:Refresh(getConfigNames())
         WindUI:Notify({ Title = "Config", Content = "Config dihapus.", Duration = 2, Icon = "trash" })
     end
 })
 
--- ================================================================
--- Respawn Handler
--- ================================================================
-
+-- ============================================================
+-- RESPAWN HANDLER
+-- ============================================================
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.7)
     flyEnabled = false
@@ -1908,6 +2298,19 @@ LocalPlayer.CharacterAdded:Connect(function(char)
                 if h.Health < math.huge then h.Health = math.huge end
             end
         end)
+    end
+    if antiFlingEnabled then
+        antiFlingData = {}
+        startAntiFling()
+    end
+    -- Recreate punch/kick tools setelah respawn
+    if punchActive then
+        task.wait(0.5)
+        createPunchFling()
+    end
+    if kickActive then
+        task.wait(0.5)
+        createKickFling()
     end
 end)
 
