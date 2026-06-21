@@ -1,0 +1,98 @@
+DOKUMENTASI DATA ID ANIMASI - VIOLENCE DISTRICT
+
+Sumber : Map Violence District hasil scanning oleh Dylphiiee
+Pengumpul Data : Dylphiiee (Komunitas PieHub)
+Metode : Scanning langsung dari file map
+Status : ILEGAL - Butuh Konversi ke R6
+
+
+LIST ID ILEGAL (Hasil Scanning Map Violence District oleh Dylphiiee dari Komunitas PieHub)
+
+24 hour cinderella : 137195203725366
+applause : 96328361165090
+arm swing : 80552139463944
+backflip : 74705617908505
+broken doll : 131796630104825
+california girl : 123552803041504
+christmash spirit : 137859761110514
+floating rest : 114593021219597
+friday night : 83229063951016
+ghoul : 130415594909401
+griddy : 75586690784894
+kwik flip : 73896868179198
+kyoufuu : 137322894494527
+manrobics : 134677515695156
+oneplays : 140625405103474
+pop off : 130933486827090
+quick combo : 105592621576604
+rambunctions : 81054496834622
+rampage : 79155929355612
+schadenfreude : 138303785534052
+source : 122615684039119
+static : 95096724457263
+the dab : 93350677984372
+thriller : 99835792883875
+tor monitor : 81792358514569
+vulnerable : 121773684313913
+war cry : 82600868380136
+wave : 99670106766588
+
+
+LIST ID LEGAL (Sumber : Wiki Roblox Old)
+
+Sumber : Wiki Roblox Old
+Pengumpul Data : Dylphiiee (Komunitas PieHub)
+Metode : Hasil pencarian Dylphiiee dari Wiki Roblox Old
+Status : LEGAL - R6 Support Tanpa Perlu Konversi
+
+Head Throw : 35154961
+Floating Head : 121572214
+Crouch : 182724289
+Floor Crawl : 282574440
+Dino Walk : 204328711
+Jumping Jacks : 429681631
+Loop Head : 35154961
+Hero Jump : 184574340
+Faint : 181526230
+Floor Faint : 181525546
+Super Faint : 181525546
+Levitate : 313762630
+Dab : 183412246
+Spinner : 188632011
+Float Sit : 179224234
+Moving Dance : 429703734
+Weird Move : 215384594
+Clone Illusion : 215384594
+Glitch Levitate : 313762630
+Spin Dance : 429730430
+Moon Dance : 45834924
+Full Punch : 204062532
+Spin Dance 2 : 186934910
+Bow Down : 204292303
+Sword Slam : 204295235
+Loop Slam : 204295235
+Mega Insane : 184574340
+Super Punch : 126753849
+Full Swing : 218504594
+Arm Turbine : 259438880
+Barrel Roll : 136801964
+Scared : 180612465
+Insane : 33796059
+Arm Detach : 33169583
+Sword Slice : 35978879
+Insane Arms : 27432691
+
+
+CATATAN PENTING
+
+1. Data Ilegal
+Data pada list pertama diperoleh secara ILEGAL dari hasil scanning map Violence District oleh Dylphiiee dari Komunitas PieHub tanpa izin dari pengembang. Segala bentuk penggunaan, penyebaran, atau pemanfaatan data ini MELANGGAR HUKUM dan dapat dikenai sanksi pidana.
+
+2. Data Legal
+Data pada list kedua merupakan hasil pencarian Dylphiiee dari Wiki Roblox Old dan merupakan animasi bawaan Roblox yang sudah support R6. Data ini dapat digunakan secara bebas tanpa perlu konversi apapun.
+
+3. Konversi R15 ke R6
+Untuk menjalankan animasi R15 ke R6 di Roblox Studio, ikuti tutorial dari video berikut : https://youtu.be/l9CFyqFdq_M?si=WJCV4Mwn9-F1IQje
+
+
+© Dylphiee (PieHub) / https://discord.gg/8cGVn25HZf 2026
