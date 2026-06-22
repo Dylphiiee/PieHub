@@ -1,5 +1,13 @@
 -- PieHub V3 by Dylphiiee
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+local WindUI
+local success, err = pcall(function()
+    WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+
+if not success or not WindUI then
+    warn("Failed to load WindUI: " .. tostring(err))
+    return
+end
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
