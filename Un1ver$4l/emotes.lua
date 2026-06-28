@@ -1,4 +1,4 @@
--- QuickEmotes Panel + Speed + ShiftLock
+-- QuickEmotes Panel + ShiftLock
 -- Tab: Anim | Emote | VD | R6
 
 local Players = game:GetService("Players")
@@ -332,59 +332,10 @@ local function filterList(query, list)
     return r
 end
 
--- ===================== SHIFT LOCK + SPEED =====================
-local isSpeedOn = false
+-- ===================== SHIFT LOCK =====================
 local isShiftLockOn = false
-local NORMAL_SPEED = 16
-local BOOST_SPEED = 30
-local trails = {}
 
-local function createTrail(part)
-    if not part then return end
-    local a1=Instance.new("Attachment") a1.Position=Vector3.new(0,-0.6,0) a1.Parent=part
-    local a2=Instance.new("Attachment") a2.Position=Vector3.new(0,-0.6,0) a2.Parent=part
-    local t=Instance.new("Trail")
-    t.Attachment0=a1 t.Attachment1=a2 t.FaceCamera=true t.LightEmission=1
-    t.Lifetime=0.35 t.Transparency=NumberSequence.new(0)
-    t.WidthScale=NumberSequence.new(1.2) t.MinLength=0.1 t.Parent=part
-    return t
-end
-
-local function findHands()
-    local chr=getChar() if not chr then return end
-    if chr:FindFirstChild("LeftHand") then
-        return chr:FindFirstChild("LeftHand"), chr:FindFirstChild("RightHand")
-    else
-        return chr:FindFirstChild("Left Arm"), chr:FindFirstChild("Right Arm")
-    end
-end
-
-local function enableTrails()
-    for _,t in pairs(trails) do if t then t:Destroy() end end trails={}
-    local l,r=findHands()
-    if l then trails.left=createTrail(l) end
-    if r then trails.right=createTrail(r) end
-end
-
-local function disableTrails()
-    for _,t in pairs(trails) do if t then t:Destroy() end end trails={}
-end
-
-local speedBtn, shiftBtn
-
-local function setSpeed(state)
-    isSpeedOn = state
-    local hum = getHum() if not hum then return end
-    if isSpeedOn then
-        hum.WalkSpeed = BOOST_SPEED enableTrails()
-        speedBtn.Text = "Speed ON"
-        speedBtn.BackgroundColor3 = Color3.fromRGB(0,200,80)
-    else
-        hum.WalkSpeed = NORMAL_SPEED disableTrails()
-        speedBtn.Text = "Speed OFF"
-        speedBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-    end
-end
+local shiftBtn
 
 local function setShiftLock(state)
     isShiftLockOn = state
@@ -422,7 +373,6 @@ end)
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
-    if isSpeedOn then setSpeed(true) end
     if isShiftLockOn then setShiftLock(true) end
 end)
 
@@ -435,21 +385,10 @@ MainGui.IgnoreGuiInset = true
 local ok2 = pcall(function() MainGui.Parent = CoreGui end)
 if not ok2 then MainGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
--- Speed button (top right)
-speedBtn = Instance.new("TextButton", MainGui)
-speedBtn.Size = UDim2.new(0,80,0,28)
-speedBtn.Position = UDim2.new(1,-90,0.45,-15)
-speedBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-speedBtn.TextColor3 = Color3.new(1,1,1)
-speedBtn.Font = Enum.Font.GothamBold speedBtn.TextSize = 12
-speedBtn.Text = "Speed OFF" speedBtn.BorderSizePixel = 0 speedBtn.ZIndex = 10
-Instance.new("UICorner",speedBtn).CornerRadius = UDim.new(0,8)
-speedBtn.MouseButton1Click:Connect(function() setSpeed(not isSpeedOn) end)
-
--- ShiftLock button (top right, above speed)
+-- ShiftLock button (top right)
 shiftBtn = Instance.new("TextButton", MainGui)
 shiftBtn.Size = UDim2.new(0,80,0,28)
-shiftBtn.Position = UDim2.new(1,-90,0.45,-48)
+shiftBtn.Position = UDim2.new(1,-90,0.45,-15)
 shiftBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
 shiftBtn.TextColor3 = Color3.new(1,1,1)
 shiftBtn.Font = Enum.Font.GothamBold shiftBtn.TextSize = 12
@@ -475,8 +414,8 @@ TIcon.ImageColor3 = Color3.fromRGB(255,255,255) TIcon.ZIndex = 51
 -- Panel
 local Panel = Instance.new("Frame", MainGui)
 Panel.Name = "Panel"
-Panel.Size = UDim2.new(0,160,0,160)
-Panel.Position = UDim2.new(0,12,1,-228)
+Panel.Size = UDim2.new(0,160,0,200)
+Panel.Position = UDim2.new(0,12,1,-268)
 Panel.BackgroundColor3 = Color3.fromRGB(30,30,38)
 Panel.BorderSizePixel = 0 Panel.Visible = false Panel.ZIndex = 50
 Instance.new("UICorner",Panel).CornerRadius = UDim.new(0,12)
@@ -519,7 +458,7 @@ end
 
 -- List
 local ListFrame = Instance.new("ScrollingFrame", Panel)
-ListFrame.Size = UDim2.new(1,-10,0,56) ListFrame.Position = UDim2.new(0,5,0,51)
+ListFrame.Size = UDim2.new(1,-10,0,96) ListFrame.Position = UDim2.new(0,5,0,51)
 ListFrame.BackgroundColor3 = Color3.fromRGB(24,24,30)
 ListFrame.BorderSizePixel = 0 ListFrame.ScrollBarThickness = 4
 ListFrame.CanvasSize = UDim2.new(0,0,0,0)
