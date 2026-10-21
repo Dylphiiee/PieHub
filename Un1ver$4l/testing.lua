@@ -1555,129 +1555,6 @@ local function createKickFlingFixed()
     kickTool = createFlingToolFixed("PieKick", 133566007754001, getLeftLeg, nil, nil, 1.5)
 end
 
--- ===================== VAPOR FLING (Emote Fling method, tool trigger) =====================
-local VaporPresets = {
-    ["Dropkick"]            = "133566007754001",
-    ["Dropkicking [TRENDY]"] = "90717656419568",
-    ["Tenna Kick"]          = "118139885865308",
-    ["MMA Kick"]            = "88347541858075",
-    ["Slap"]                = "108225134235478",
-    ["Slap2"]               = "78221709455150",
-    ["Push"]                = "135890160317037",
-    ["Push2"]               = "82070755455634",
-}
-local VaporPresetNames = { "Dropkick", "Dropkicking [TRENDY]", "Tenna Kick", "MMA Kick", "Slap", "Slap2", "Push", "Push2" }
-
-local vaporActive = false
-local vaporTool = nil
-local vaporRunning = false
-local vaporTrack = nil
-local vaporAnimId = VaporPresets["Dropkick"]
-local vaporCustomId = ""
-local vaporSpeed = 16
-
-local function vaporResetPhysics()
-    local hrp = getHRP()
-    if hrp then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
-end
-
-local function vaporStop()
-    vaporRunning = false
-    if vaporTrack then
-        pcall(function() vaporTrack:Stop() end)
-        vaporTrack = nil
-    end
-    vaporResetPhysics()
-end
-
-local function removeVaporTool()
-    vaporRunning = false
-    if vaporTool and vaporTool.Parent then vaporTool:Destroy() end
-    vaporTool = nil
-end
-
-local function createVaporFling()
-    removeVaporTool()
-    if not getChar() or not getHum() then return end
-
-    local tool = Instance.new("Tool", LocalPlayer.Backpack)
-    tool.RequiresHandle = false
-    tool.Name = "PieVapor"
-    tool.ToolTip = "Vapor Fling | click to start, click again to stop"
-
-    tool.Activated:Connect(function()
-        -- click again = stop
-        if vaporRunning then
-            vaporRunning = false
-            return
-        end
-
-        local chr = getChar()
-        local hum = getHum()
-        local hrp = getHRP()
-        if not (chr and hum and hrp) then return end
-
-        local idStr = (vaporCustomId ~= "" and vaporCustomId:match("%d+")) or vaporAnimId
-        local anim = Instance.new("Animation")
-        anim.AnimationId = "rbxassetid://" .. tostring(idStr)
-
-        local ok, track = pcall(function() return hum:LoadAnimation(anim) end)
-        if not ok or not track then
-            WindUI:Notify({ Title = "Vapor Fling", Content = "Failed to load the animation!", Duration = 2, Icon = "alert-circle" })
-            return
-        end
-
-        vaporRunning = true
-        vaporTrack = track
-
-        local animStopped = false
-        track.Stopped:Once(function() animStopped = true end)
-        track.Priority = Enum.AnimationPriority.Action
-        track.Looped = false
-        track:Play()
-
-        local flip = 1
-        local timeout = tick() + 300
-
-        while vaporRunning and not animStopped and tick() < timeout do
-            RunService.Heartbeat:Wait()
-
-            -- stop if the character changed (respawn)
-            if getChar() ~= chr then break end
-            local r = getHRP()
-            local h = getHum()
-            if not (r and h) then break end
-
-            local dir = h.MoveDirection
-            flip = flip * -1
-            r.AssemblyLinearVelocity = Vector3.new(100000 * flip, 0, 100000 * flip)
-            r.AssemblyAngularVelocity = Vector3.new(100000 * flip, 100000 * flip, 100000 * flip)
-
-            RunService.RenderStepped:Wait()
-            if not vaporRunning then break end
-
-            if dir.Magnitude > 0 then
-                local spd = vaporSpeed
-                r.AssemblyLinearVelocity = Vector3.new(dir.X * spd, -2, dir.Z * spd)
-            else
-                r.AssemblyLinearVelocity = Vector3.new(0, -2, 0)
-            end
-            r.AssemblyAngularVelocity = Vector3.zero
-        end
-
-        vaporStop()
-    end)
-
-    tool.Unequipped:Connect(function()
-        if vaporRunning then vaporStop() end
-    end)
-
-    vaporTool = tool
-end
-
 FlingSection:Toggle({
     Title = "PUNCH FLING (Tool)", Desc = "Equip punch tool and click a player to fling them",
     Icon = "hand", Value = false,
@@ -1717,38 +1594,232 @@ FlingSection:Toggle({
     end
 })
 
-FlingSection:Toggle({
-    Title = "VAPOR FLING (Tool)", Desc = "Equip the tool and click to start the emote fling, click again to stop",
-    Icon = "plane", Value = false,
-    Callback = function(state)
-        vaporActive = state
-        if state then
-            createVaporFling()
-        else
-            removeVaporTool()
-            vaporStop()
+-- ===================== VAPOR FLING (TOOL) =====================
+local vaporToolActive = false
+local vaporCreate = nil
+local vaporRemove = nil
+
+do
+    local MarketplaceService = game:GetService("MarketplaceService")
+
+    local VaporPresets = {
+        ["Dropkick"]               = "133566007754001",
+        ["Dropkicking [TRENDY]"]   = "90717656419568",
+        ["Tenna Kick"]             = "118139885865308",
+        ["MMA Kick"]              = "88347541858075",
+        ["Slap"]                   = "108225134235478",
+        ["Slap2"]                  = "78221709455150",
+        ["Push"]                   = "135890160317037",
+        ["Push2"]                  = "82070755455634",
+    }
+    local VaporPresetNames = { "Dropkick", "Dropkicking [TRENDY]", "Tenna Kick", "MMA Kick", "Slap", "Slap2", "Push", "Push2" }
+
+    local vaporAnimId = VaporPresets["Dropkick"]
+    local vaporSpeed = 16
+    local vaporUseCustom = false
+    local vaporCustomId = ""
+    local vaporTool = nil
+    local vaporRunning = false
+    local vaporResolving = false
+    local vaporTrack = nil
+    local vaporLastFire = 0
+
+    local function resolveAnimId(rawId)
+        if type(rawId) ~= "string" then return nil end
+        local numStr = rawId:match("%d+")
+        if not numStr then return nil end
+
+        local ok, info = pcall(function() return MarketplaceService:GetProductInfo(tonumber(numStr)) end)
+        if ok and info and info.AssetTypeId ~= 24 and info.AssetTypeId ~= 61 then
+            return nil
+        end
+
+        local getOk, objects = pcall(function() return game:GetObjects("rbxassetid://" .. numStr) end)
+        if getOk and type(objects) == "table" then
+            for _, obj in pairs(objects) do
+                if typeof(obj) == "Instance" then
+                    if obj:IsA("Animation") then return obj.AnimationId end
+                    local child = obj:FindFirstChildWhichIsA("Animation", true)
+                    if child then return child.AnimationId end
+                end
+            end
+        end
+        return "rbxassetid://" .. numStr
+    end
+
+    local function vaporCleanup()
+        vaporRunning = false
+        if vaporTrack then
+            pcall(function() vaporTrack:Stop() end)
+            vaporTrack = nil
+        end
+        local hrp = getHRP()
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
         end
     end
-})
 
-FlingSection:Dropdown({
-    Title = "Vapor Animation", Desc = "Pick the animation used by the Vapor Fling tool",
-    Values = VaporPresetNames, Value = "Dropkick",
-    Callback = function(v)
-        vaporAnimId = VaporPresets[v] or VaporPresets["Dropkick"]
+    local function vaporFire()
+        local now = tick()
+        if now - vaporLastFire < 0.5 then return end
+        vaporLastFire = now
+
+        -- Klik lagi saat aktif = stop
+        if vaporRunning then
+            vaporRunning = false
+            return
+        end
+        if vaporResolving then return end
+
+        local targetId = vaporUseCustom and vaporCustomId or vaporAnimId
+        if type(targetId) ~= "string" or targetId:match("^%s*$") then
+            WindUI:Notify({ Title = "Vapor Fling", Content = "Animation ID is empty!", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        if not (getHRP() and getHum()) then
+            WindUI:Notify({ Title = "Vapor Fling", Content = "Your character could not be found!", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        vaporResolving = true
+        task.spawn(function()
+            local finalId = resolveAnimId(targetId)
+            vaporResolving = false
+
+            if not finalId then
+                WindUI:Notify({ Title = "Vapor Fling", Content = "Invalid ID! Must be an Animation or Emote.", Duration = 3, Icon = "x-circle" })
+                return
+            end
+
+            local hum = getHum()
+            local hrp = getHRP()
+            if not (hum and hrp) then return end
+
+            local anim = Instance.new("Animation")
+            anim.AnimationId = finalId
+
+            local trackOk, track = pcall(function() return hum:LoadAnimation(anim) end)
+            if not trackOk or not track then
+                WindUI:Notify({ Title = "Vapor Fling", Content = "Failed to load animation track.", Duration = 2, Icon = "x-circle" })
+                return
+            end
+
+            vaporTrack = track
+            vaporRunning = true
+
+            local animStopped = false
+            track.Stopped:Once(function() animStopped = true end)
+
+            track.Priority = Enum.AnimationPriority.Action
+            track.Looped = false
+            track:Play()
+
+            WindUI:Notify({ Title = "Vapor Fling", Content = "Active! Click the tool again to stop.", Duration = 2, Icon = "zap" })
+
+            local flip = 1
+            local timeout = tick() + 300
+
+            while vaporRunning and not animStopped do
+                if tick() > timeout then break end
+                RunService.Heartbeat:Wait()
+
+                local c = LocalPlayer.Character
+                local r = c and c:FindFirstChild("HumanoidRootPart")
+                local h = c and c:FindFirstChildWhichIsA("Humanoid")
+                if not (r and h) then break end
+
+                local dir = h.MoveDirection
+                flip = flip * -1
+                r.AssemblyLinearVelocity = Vector3.new(100000 * flip, 0, 100000 * flip)
+                r.AssemblyAngularVelocity = Vector3.new(100000 * flip, 100000 * flip, 100000 * flip)
+
+                RunService.RenderStepped:Wait()
+                if not vaporRunning then break end
+
+                if dir.Magnitude > 0 then
+                    local spd = vaporSpeed
+                    r.AssemblyLinearVelocity = Vector3.new(dir.X * spd, -2, dir.Z * spd)
+                else
+                    r.AssemblyLinearVelocity = Vector3.new(0, -2, 0)
+                end
+                r.AssemblyAngularVelocity = Vector3.zero
+            end
+
+            vaporCleanup()
+            pcall(function() anim:Destroy() end)
+            WindUI:Notify({ Title = "Vapor Fling", Content = "Physics restored to normal.", Duration = 2, Icon = "shield-off" })
+        end)
     end
-})
 
-FlingSection:Input({
-    Title = "Vapor Custom Animation ID", Desc = "Optional | leave empty to use the preset above", Placeholder = "133566007754001", Value = "",
-    Callback = function(v) vaporCustomId = v or "" end
-})
+    vaporRemove = function()
+        vaporCleanup()
+        if vaporTool then
+            pcall(function() vaporTool:Destroy() end)
+            vaporTool = nil
+        end
+    end
 
-FlingSection:Slider({
-    Title = "Vapor Walk Speed", Desc = "Movement speed while the Vapor Fling is running | Default: 16", Icon = "gauge",
-    Step = 2, Value = { Min = 16, Max = 200, Default = 16 }, IsTooltip = true, IsTextbox = true,
-    Callback = function(v) vaporSpeed = v end
-})
+    vaporCreate = function()
+        vaporRemove()
+        if not LocalPlayer:FindFirstChild("Backpack") then return end
+
+        local tool = Instance.new("Tool")
+        tool.RequiresHandle = false
+        tool.Name = "PieVaporFling"
+        tool.ToolTip = "Vapor Fling (click to start / stop)"
+        tool.Parent = LocalPlayer.Backpack
+
+        tool.Activated:Connect(vaporFire)
+        tool.Unequipped:Connect(function()
+            if vaporRunning then vaporRunning = false end
+        end)
+
+        vaporTool = tool
+    end
+
+    FlingSection:Divider()
+
+    FlingSection:Toggle({
+        Title = "VAPOR FLING (Tool)", Desc = "Equip the tool and click to start / stop Vapor fling",
+        Icon = "zap", Value = false,
+        Callback = function(state)
+            vaporToolActive = state
+            if state then
+                vaporCreate()
+            else
+                vaporRemove()
+            end
+        end
+    })
+
+    FlingSection:Dropdown({
+        Title = "Vapor Preset", Desc = "Choose the animation used by Vapor Fling",
+        Values = VaporPresetNames, Value = "Dropkick",
+        Callback = function(v)
+            vaporAnimId = VaporPresets[v] or VaporPresets["Dropkick"]
+        end
+    })
+
+    FlingSection:Toggle({
+        Title = "Vapor Custom ID", Desc = "Use your own animation ID instead of the preset",
+        Icon = "pencil", Value = false,
+        Callback = function(state) vaporUseCustom = state end
+    })
+
+    FlingSection:Input({
+        Title = "Vapor Animation ID", Desc = "Enter an Animation / Emote asset ID",
+        Placeholder = "133566007754001", Value = "",
+        Callback = function(v) vaporCustomId = v end
+    })
+
+    FlingSection:Slider({
+        Title = "Vapor Walk Speed", Desc = "Movement speed while Vapor fling is active | Default: 16", Icon = "gauge",
+        Step = 1, Value = { Min = 16, Max = 200, Default = 16 }, IsTooltip = true, IsTextbox = true,
+        Callback = function(v) vaporSpeed = v end
+    })
+end
 
 FlingSection:Slider({
     Title = "Fling Power", Desc = "Set how strong the fling is | Default: 50", Icon = "zap",
@@ -1760,492 +1831,6 @@ FlingSection:Slider({
     Title = "Fling Time", Desc = "Set how long the fling lasts | Default: 30", Icon = "timer",
     Step = 5, Value = { Min = 1, Max = 120, Default = 30 }, IsTooltip = true, IsTextbox = true,
     Callback = function(v) PunchTime = v end
-})
-
--- TAB: EMOTES
-local TabAnimations = Window:Tab({ Title = "Emotes", Icon = "person-standing" })
-
-local FullEmoteList = {}
-
-local function loadVexroEmotes()
-    pcall(function()
-        local response = game:HttpGet("https://raw.githubusercontent.com/zyrovell/Vexro/main/emotes.json")
-        local data = HttpService:JSONDecode(response)
-        if type(data) == "table" then
-            for _, v in ipairs(data.data) do
-                if type(v) == "table" then
-                    local name = v.name or v.Name
-                    local id = tonumber(v.id or v.Id)
-                    if name and id then table.insert(FullEmoteList, { Title = tostring(name), Id = id }) end
-                end
-            end
-        end
-    end)
-    if #FullEmoteList == 0 then
-        for _, v in ipairs({
-            { Title = "Floss Dance", Id = 5917459365 }, { Title = "Fancy Feet", Id = 3333432454 },
-            { Title = "Wave", Id = 3576686446 }, { Title = "Dance", Id = 3576720708 },
-        }) do table.insert(FullEmoteList, v) end
-    end
-end
-
-local function loadAFEMEmotes()
-    pcall(function()
-        local response = game:HttpGet("https://raw.githubusercontent.com/Joystickplays/AFEM/main/emotes.json")
-        local data = HttpService:JSONDecode(response)
-        if type(data) == "table" then
-            for _, v in ipairs(data) do
-                if type(v) == "table" then
-                    local name = v.name or v.Name
-                    local id = tonumber(v.id or v.Id)
-                    if name and id then table.insert(FullEmoteList, { Title = tostring(name), Id = id }) end
-                end
-            end
-        end
-    end)
-end
-
-local function load7yd7Emotes()
-    pcall(function()
-        local response = game:HttpGet("https://raw.githubusercontent.com/7yd7/sniper-Emote/test/EmoteSniper.json")
-        local data = HttpService:JSONDecode(response)
-        if type(data) == "table" then
-            for _, v in ipairs(data.data) do
-                if type(v) == "table" then
-                    local name = v.name or v.Name
-                    local id = tonumber(v.id or v.Id)
-                    if name and id then table.insert(FullEmoteList, { Title = tostring(name), Id = id }) end
-                end
-            end
-        end
-    end)
-end
-
-loadVexroEmotes()
-loadAFEMEmotes()
-load7yd7Emotes()
-
-for _, v in ipairs({
-    { Title = "Kicau Mania", Id = 94366793932506 },
-    { Title = "Ketlin", Id = 138980457623979 },
-    { Title = "Drop Kick", Id = 133566007754001 },
-}) do table.insert(FullEmoteList, v) end
-
-local _seen = {} local _deduped = {}
-for _, v in ipairs(FullEmoteList) do
-    if not _seen[v.Title] then _seen[v.Title] = true table.insert(_deduped, v) end
-end
-FullEmoteList = _deduped
-table.sort(FullEmoteList, function(a,b) return a.Title:lower() < b.Title:lower() end)
-
-local selectedCustomEmote = nil
-local customEmoteNameValue = ""
-local customEmoteAnimIdValue = ""
-local currentEmoteTrack = nil
-local emoteLoopEnabled = true
-local emoteWalkEnabled = false
-local customEmoteLoopEnabled = true
-local customEmoteWalkEnabled = false
-local walkEmoteConn = nil
-local customWalkEmoteConn = nil
-local _animObjCache = {}
-
-local function getAnimator()
-    local chr = getChar()
-    if not chr then return nil end
-    local hum = chr:FindFirstChildWhichIsA("Humanoid")
-    if not hum then return nil end
-    local animator = hum:FindFirstChildOfClass("Animator")
-    if not animator then animator = Instance.new("Animator") animator.Parent = hum end
-    return animator
-end
-
-local function stopAllTracks()
-    local animator = getAnimator()
-    if not animator then return end
-    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-        pcall(function() track:Stop(0.1) end)
-    end
-    currentEmoteTrack = nil
-end
-
-local function loadEmoteObj(id)
-    local animObj = _animObjCache[id]
-    if not animObj then
-        local ok, objects = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(id)) end)
-        if ok and objects and #objects > 0 then
-            local item = objects[1]
-            animObj = item:IsA("Animation") and item or item:FindFirstChildWhichIsA("Animation", true)
-        end
-        if not animObj then
-            animObj = Instance.new("Animation")
-            animObj.AnimationId = "rbxassetid://" .. tostring(id)
-        end
-        _animObjCache[id] = animObj
-    end
-    return animObj
-end
-
-local emotePlayGeneration = 0
-
-local function playEmote(data, loopState, walkState)
-    emotePlayGeneration = emotePlayGeneration + 1
-    local myGeneration = emotePlayGeneration
-
-    if walkEmoteConn then walkEmoteConn:Disconnect() walkEmoteConn = nil end
-    if currentEmoteTrack then
-        pcall(function() currentEmoteTrack:Stop(0.1) end)
-        currentEmoteTrack = nil
-    end
-    local animator = getAnimator()
-    if not animator then return end
-    for _, oldTrack in ipairs(animator:GetPlayingAnimationTracks()) do
-        pcall(function() oldTrack:Stop(0.1) end)
-    end
-    task.spawn(function()
-        local animObj = loadEmoteObj(data.Id)
-        local ok2, track = pcall(function() return animator:LoadAnimation(animObj) end)
-        if myGeneration ~= emotePlayGeneration then
-            if ok2 and track then pcall(function() track:Stop(0) track:Destroy() end) end
-            return
-        end
-        if not ok2 or not track then
-            WindUI:Notify({ Title = "Error", Content = "Gagal load emote!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        track.Priority = Enum.AnimationPriority.Action4
-        track.Looped = loopState
-        track:Play(0.15)
-        if myGeneration ~= emotePlayGeneration then
-            pcall(function() track:Stop(0) end)
-            return
-        end
-        currentEmoteTrack = track
-
-        if walkState then
-            local conn
-            conn = RunService.Heartbeat:Connect(function()
-                if myGeneration ~= emotePlayGeneration then conn:Disconnect() return end
-                local hum = getHum()
-                if not hum then
-                    pcall(function() track:Stop(0.1) end)
-                    conn:Disconnect() currentEmoteTrack = nil return
-                end
-                if not track.IsPlaying and loopState then
-                    track:Play(0.1)
-                end
-            end)
-            walkEmoteConn = conn
-        else
-            local conn
-            conn = RunService.Heartbeat:Connect(function()
-                if myGeneration ~= emotePlayGeneration then conn:Disconnect() return end
-                local hum = getHum()
-                if not hum then
-                    pcall(function() track:Stop(0.1) end)
-                    conn:Disconnect() currentEmoteTrack = nil return
-                end
-                if hum.MoveDirection.Magnitude > 0 then
-                    pcall(function() track:Stop(0.2) end)
-                    currentEmoteTrack = nil conn:Disconnect()
-                end
-            end)
-            track.Stopped:Connect(function()
-                if myGeneration == emotePlayGeneration then currentEmoteTrack = nil end
-                pcall(function() conn:Disconnect() end)
-            end)
-        end
-    end)
-end
-
-local function stopEmote()
-    emotePlayGeneration = emotePlayGeneration + 1
-    if walkEmoteConn then walkEmoteConn:Disconnect() walkEmoteConn = nil end
-    if customWalkEmoteConn then customWalkEmoteConn:Disconnect() customWalkEmoteConn = nil end
-    if currentEmoteTrack then
-        pcall(function() currentEmoteTrack:Stop(0.2) end)
-        currentEmoteTrack = nil
-    end
-    local animator = getAnimator()
-    if animator then
-        for _, oldTrack in ipairs(animator:GetPlayingAnimationTracks()) do
-            if oldTrack.Priority == Enum.AnimationPriority.Action4 then
-                pcall(function() oldTrack:Stop(0.2) end)
-            end
-        end
-    end
-end
-
-local EMOTE_PER_PAGE = 30
-local emotePage = 1
-local emoteSearchResults = FullEmoteList
-local selectedEmote = nil
-
-local function getFilteredEmotes(query)
-    if not query or query == "" then return FullEmoteList end
-    local result = {} local q = query:lower()
-    for _, v in ipairs(FullEmoteList) do
-        if v.Title:lower():find(q, 1, true) then table.insert(result, v) end
-    end
-    return result
-end
-
-local function getEmotePage(list, pg)
-    local names = {}
-    local s = (pg-1)*EMOTE_PER_PAGE+1
-    local e2 = math.min(pg*EMOTE_PER_PAGE, #list)
-    for i = s, e2 do table.insert(names, list[i].Title) end
-    return names
-end
-
-local function getTotalEmotePages(list)
-    return math.max(1, math.ceil(#list / EMOTE_PER_PAGE))
-end
-
-local function getEmoteData(title)
-    for _, v in ipairs(FullEmoteList) do
-        if v.Title == title then return v end
-    end
-    return nil
-end
-
-local customEmotes = {}
-local customEmotesFile = "WindUI/PieHub/customEmotes.json"
-
-pcall(function()
-    if makefolder and not isfolder("WindUI") then makefolder("WindUI") end
-    if makefolder and not isfolder("WindUI/PieHub") then makefolder("WindUI/PieHub") end
-end)
-
-local function saveCustomEmotes()
-    pcall(function()
-        if writefile then writefile(customEmotesFile, HttpService:JSONEncode(customEmotes)) end
-    end)
-end
-
-local function loadCustomEmotes()
-    pcall(function()
-        if readfile and isfile and isfile(customEmotesFile) then
-            local data = HttpService:JSONDecode(readfile(customEmotesFile))
-            if type(data) == "table" then customEmotes = data end
-        end
-    end)
-end
-
-loadCustomEmotes()
-
-pcall(function()
-    if makefolder and not isfolder("WindUI") then makefolder("WindUI") end
-    if makefolder and not isfolder("WindUI/PieHub") then makefolder("WindUI/PieHub") end
-end)
-
-local SectionEmote = TabAnimations:Section({ Title = "Emote", Icon = "drama", Opened = true })
-
-local emoteSearchValue = ""
-SectionEmote:Input({
-    Title = "Search", Desc = "Search for an emote by name", Placeholder = "Dance", Value = "",
-    Callback = function(v) emoteSearchValue = v end
-})
-
-local emoteDropdown
-local emotePageParagraph
-
-local function refreshEmoteDropdown()
-    local totalPages = getTotalEmotePages(emoteSearchResults)
-    emotePage = math.clamp(emotePage, 1, totalPages)
-    emoteDropdown:Refresh(getEmotePage(emoteSearchResults, emotePage))
-    emotePageParagraph:SetTitle("Emote Pages")
-    emotePageParagraph:SetDesc("page " .. emotePage .. " / " .. totalPages .. " | Hasil: " .. #emoteSearchResults .. " emote")
-    selectedEmote = nil
-end
-
-local HStackEmoteSearch = SectionEmote:HStack({ AutoSpace = true })
-HStackEmoteSearch:Button({
-    Title = "Search", Icon = "search",
-    Callback = function()
-        emoteSearchResults = getFilteredEmotes(emoteSearchValue)
-        emotePage = 1 refreshEmoteDropdown()
-        if #emoteSearchResults == 0 then
-            WindUI:Notify({ Title = "Emote", Content = "No emotes found matching" .. emoteSearchValue .. "'", Duration = 2, Icon = "alert-circle" })
-        else
-            WindUI:Notify({ Title = "Emote", Content = "Found" .. #emoteSearchResults .. " emote", Duration = 2, Icon = "search" })
-        end
-    end
-})
-HStackEmoteSearch:Button({
-    Title = "Reset", Icon = "refresh-cw",
-    Callback = function()
-        emoteSearchValue = "" emoteSearchResults = FullEmoteList emotePage = 1 refreshEmoteDropdown()
-        WindUI:Notify({ Title = "Emote", Content = "Showing all available emotes", Duration = 2, Icon = "refresh-cw" })
-    end
-})
-
-SectionEmote:Divider()
-
-emotePageParagraph = SectionEmote:Paragraph({
-    Title = "Emote Page",
-    Desc = "page of 1 / " .. getTotalEmotePages(FullEmoteList) .. " | Total: " .. #FullEmoteList .. " emote",
-    Icon = "list",
-})
-
-emoteDropdown = SectionEmote:Dropdown({
-    Title = "Emote List", Desc = "Pick an emote to play on your character",
-    Values = getEmotePage(FullEmoteList, 1), Value = "",
-    Callback = function(v) selectedEmote = v end
-})
-
-local HStackEmoteNav = SectionEmote:HStack({ AutoSpace = true })
-HStackEmoteNav:Button({
-    Title = "< Previous",
-    Callback = function()
-        if emotePage <= 1 then
-            WindUI:Notify({ Title = "Emote", Content = "You are already on the first page!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        emotePage = emotePage - 1 refreshEmoteDropdown()
-        WindUI:Notify({ Title = "Emote", Content = "Switched to page " .. emotePage, Duration = 1, Icon = "chevron-left" })
-    end
-})
-HStackEmoteNav:Button({
-    Title = "Next >",
-    Callback = function()
-        if emotePage >= getTotalEmotePages(emoteSearchResults) then
-            WindUI:Notify({ Title = "Emote", Content = "You are already on the last page!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        emotePage = emotePage + 1 refreshEmoteDropdown()
-        WindUI:Notify({ Title = "Emote", Content = "Switched to page " .. emotePage, Duration = 1, Icon = "chevron-right" })
-    end
-})
-
-SectionEmote:Divider()
-
-local HStackEmotePlay = SectionEmote:HStack({ AutoSpace = true })
-HStackEmotePlay:Button({
-    Title = "Apply", Icon = "play",
-    Callback = function()
-        if not selectedEmote or selectedEmote == "" then
-            WindUI:Notify({ Title = "Error", Content = "Please select an emote first!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        local data = getEmoteData(selectedEmote)
-        if not data then
-            WindUI:Notify({ Title = "Error", Content = "The selected emote could not be found!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        playEmote(data, emoteLoopEnabled, emoteWalkEnabled)
-        WindUI:Notify({ Title = "Emote", Content = "Now playing: '" .. selectedEmote .. "'", Duration = 2, Icon = "play" })
-    end
-})
-HStackEmotePlay:Button({
-    Title = "Stop", Icon = "square",
-    Callback = function()
-        stopEmote()
-        WindUI:Notify({ Title = "Emote", Content = "Emote has been stopped", Duration = 2, Icon = "square" })
-    end
-})
-
-SectionEmote:Toggle({
-    Title = "Loop", Desc = "Keep playing the emote on repeat", Icon = "repeat", Value = true,
-    Callback = function(state)
-        emoteLoopEnabled = state
-        if currentEmoteTrack then currentEmoteTrack.Looped = state end
-    end
-})
-
-SectionEmote:Toggle({
-    Title = "Walking Animation", Desc = "Continue emote while walking around", Icon = "footprints", Value = false,
-    Callback = function(state) emoteWalkEnabled = state end
-})
-
-local SectionMoreAnim = TabAnimations:Section({ Title = "Custom Emote", Icon = "smile-plus", Opened = true })
-
-SectionMoreAnim:Input({
-    Title = "Emote Name", Desc = "Give your custom emote a name", Placeholder = "My Emote", Value = "",
-    Callback = function(v) customEmoteNameValue = v end
-})
-SectionMoreAnim:Input({
-    Title = "Animation ID", Desc = "Animation ID emote Roblox", Placeholder = "507770818", Value = "",
-    Callback = function(v) customEmoteAnimIdValue = v end
-})
-
-local customEmoteDropdown
-
-local function buildCustomEmoteNames()
-    local names = {}
-    for name in pairs(customEmotes) do table.insert(names, name) end
-    table.sort(names, function(a,b) return a:lower() < b:lower() end)
-    return names
-end
-
-customEmoteDropdown = SectionMoreAnim:Dropdown({
-    Title = "Custom Emote List", Desc = "Pick an custom emote to play on your character",
-    Values = buildCustomEmoteNames(), Value = "",
-    Callback = function(v) selectedCustomEmote = v end
-})
-
-local HStackCustomBtn = SectionMoreAnim:HStack({ AutoSpace = true })
-HStackCustomBtn:Button({
-    Title = "Save", Icon = "save",
-    Callback = function()
-        if customEmoteNameValue == "" then
-            WindUI:Notify({ Title = "Error", Content = "Please enter a name for the emote!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        local id = tonumber(customEmoteAnimIdValue)
-        if not id then
-            WindUI:Notify({ Title = "Error", Content = "Animation ID must be a valid number!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        customEmotes[customEmoteNameValue] = id
-        saveCustomEmotes() customEmoteDropdown:Refresh(buildCustomEmoteNames())
-        WindUI:Notify({ Title = "Custom Emote", Content = "Emote '" .. customEmoteNameValue .. "' has been saved!", Duration = 2, Icon = "save" })
-    end
-})
-HStackCustomBtn:Button({
-    Title = "Refresh", Icon = "refresh-cw",
-    Callback = function()
-        customEmoteDropdown:Refresh(buildCustomEmoteNames())
-        WindUI:Notify({ Title = "Custom Emote", Content = "Custom emote list has been refreshed.", Duration = 2, Icon = "refresh-cw" })
-    end
-})
-HStackCustomBtn:Button({
-    Title = "Delete", Icon = "trash",
-    Callback = function()
-        if not selectedCustomEmote or not customEmotes[selectedCustomEmote] then
-            WindUI:Notify({ Title = "Error", Content = "Please select a custom emote first!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        customEmotes[selectedCustomEmote] = nil selectedCustomEmote = nil
-        saveCustomEmotes() customEmoteDropdown:Refresh(buildCustomEmoteNames())
-        WindUI:Notify({ Title = "Custom Emote", Content = "Custom emote has been deleted.", Duration = 2, Icon = "trash" })
-    end
-})
-
-SectionMoreAnim:Divider()
-
-local HStackCustomPlay = SectionMoreAnim:HStack({ AutoSpace = true })
-HStackCustomPlay:Button({
-    Title = "Apply", Icon = "play",
-    Callback = function()
-        if not selectedCustomEmote or not customEmotes[selectedCustomEmote] then
-            WindUI:Notify({ Title = "Error", Content = "Please select a custom emote first!", Duration = 2, Icon = "alert-circle" }) return
-        end
-        playEmote({ Title = selectedCustomEmote, Id = customEmotes[selectedCustomEmote] }, customEmoteLoopEnabled, customEmoteWalkEnabled)
-        WindUI:Notify({ Title = "Custom Emote", Content = "Now playing: '" .. selectedCustomEmote .. "'", Duration = 2, Icon = "play" })
-    end
-})
-HStackCustomPlay:Button({
-    Title = "Stop", Icon = "square",
-    Callback = function()
-        stopEmote()
-        WindUI:Notify({ Title = "Custom Emote", Content = "Custom emote has been stopped.", Duration = 2, Icon = "square" })
-    end
-})
-
-SectionMoreAnim:Toggle({
-    Title = "Loop", Desc = "Keep playing the custom emote on repeat", Icon = "repeat", Value = true,
-    Callback = function(state)
-        customEmoteLoopEnabled = state
-        if currentEmoteTrack then currentEmoteTrack.Looped = state end
-    end
-})
-
-SectionMoreAnim:Toggle({
-    Title = "Walking Animation", Desc = "Continue custom emote while walking around", Icon = "footprints", Value = false,
-    Callback = function(state) customEmoteWalkEnabled = state end
 })
 
 -- TAB: TELEPORT
@@ -3361,7 +2946,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if punchActive then createPunchFlingFixed() end
     if saitamaActive then createSaitamaFlingFixed() end
     if kickActive then createKickFlingFixed() end
-    if vaporActive then createVaporFling() end
+    if vaporToolActive and vaporCreate then vaporCreate() end
 end)
 
 -- ===================== JUMP STATE FIXER =====================
@@ -3379,18 +2964,6 @@ local function forceJumpStateFix()
     end)
     if hum.PlatformStand then hum.PlatformStand = false end
     if hum.UseJumpPower and hum.JumpPower <= 0 then hum.JumpPower = jumpPowerEnabled and jumpPowerValue or 50 end
-end
-
-local _origPlayEmote = playEmote
-playEmote = function(data, loopState, walkState)
-    _origPlayEmote(data, loopState, walkState)
-    task.spawn(function() task.wait(0.1) forceJumpStateFix() end)
-end
-
-local _origStopEmote = stopEmote
-stopEmote = function()
-    _origStopEmote()
-    task.spawn(function() task.wait(0.1) forceJumpStateFix() end)
 end
 
 LocalPlayer.Chatted:Connect(function(msg)
